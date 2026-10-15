@@ -1,0 +1,102 @@
+---
+name: serial-debug-bridge
+description: 在 server 上通过 serial-debug-bridge 操作接在 client 串口上的嵌入式设备：执行命令、传文件、复位、交互控制台，以及链路排障。适用于串口不在本机（devctl/agent/TCP/SSH/反向隧道）的场景。
+metadata:
+  short-description: 通过远端串口调试嵌入式设备
+---
+
+# serial-debug-bridge（server 侧操作）
+
+## 心智模型
+
+```
+server: devctl  --TCP 或 SSH-->  client: serial_agent  --UART-->  嵌入式设备
+```
+
+串口插在哪台机器上，`serial_agent` 就在哪台机器上跑（下称 **client**）；
+你在 **server** 上敲 `sdb`，`sdb` 调用 `devctl.py` 把命令/文件转给 agent，agent 再读写串口。
+
+**设备控制台通常就是 root shell**：能连上 agent 等于能完全控制设备。
+
+## 怎么调用：用 `scripts/sdb`
+
+`scripts/sdb` 是唯一的推荐入口，它替你处理端点解析、鉴权参数和外层超时：
+
+```bash
+S="$HOME/.codex/skills/serial-debug-bridge/scripts/sdb"
+
+$S info                         # 代理/设备信息（不碰设备）
+$S exec 'uname -a; id -un'      # 在设备上执行；退出码 = 设备命令退出码
+$S push ./fw.bin /tmp/fw.bin    # server -> 设备（设备侧 md5 校验）
+$S pull /etc/hostname ./h       # 设备 -> server（落盘后 md5 校验）
+$S md5 /tmp/fw.bin              # 设备侧 md5
+$S reset                        # 通过 DTR 复位（会打断设备，先确认）
+$S shell                        # 交互式控制台（仅 TCP），Ctrl+] 退出
+```
+
+等价的直接调用（需要自己拼参数）：
+
+```bash
+python3 ~/serial-debug-bridge/devctl.py --tcp 127.0.0.1:17801 exec "uname -a"
+```
+
+### 端点解析（环境变量 > 配置文件 > 默认）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `SDB_TCP` | `127.0.0.1:17801` | 连已监听的 agent；直连时写 `client-ip:7801` |
+| `SDB_SSH` | 空 | `user@host`，让 devctl 通过 ssh 在 client 上拉起 agent |
+| `SDB_PORT` / `SDB_BAUD` | `/dev/ttyUSB0` / `115200` | 仅 `SDB_SSH` 时用 |
+| `SDB_REMOTE_AGENT` | 空 | client 上的 agent 路径（仅 `SDB_SSH`） |
+| `SDB_TOKEN` | 空 | agent 用 `--auth` 启动时的口令 |
+| `SDB_DEVCTL` | 见脚本 | `devctl.py` 路径 |
+| `SDB_CONFIG` | `~/.config/serial-debug-bridge/target` | 配置文件（会被 source） |
+| `SDB_TIMEOUT` | `180` | 外层硬超时秒数，`0` 关闭 |
+| `SDB_EXTRA` | 空 | 附加 devctl 参数，按空格切分，如 `-q --timeout 300000` |
+
+> **大文件务必放宽超时**：`SDB_EXTRA="-q" SDB_TIMEOUT=0 $S push big.bin /tmp/big.bin`。
+> 60 KB 上传就要约 50 秒（见下）。
+
+## 开工前的两步
+
+```bash
+# 1) 链路与设备身份：确认「我连上的确实是这台设备」
+bash "$HOME/.codex/skills/serial-debug-bridge/scripts/sdb-check.sh"
+bash "$HOME/.codex/skills/serial-debug-bridge/scripts/sdb-check.sh" --ports   # 顺带看端口占用
+
+# 2) 设备有哪些传输工具
+$S exec 'command -v busybox base64 openssl awk od md5sum'
+```
+
+`sdb-check.sh` 会打印端点、`info`、设备身份（`uname -a; hostname`）和传输能力；
+`--ports` 会列出本机该端口的监听者，用来发现「端口被别的进程抢占」。
+
+## 传输可靠性与速度（必须知道）
+
+串口在高波特率下**收发两个方向都会偶发丢字节**，所以不要硬怼：
+
+* **编码自适应**：`base64` → `busybox base64` → `openssl base64` → `hex+awk`。
+  设备没有 base64 时（例如 Yocto 精简镜像）自动走 hex+awk。
+* **上传逐块校验 + 重传**：按 1 KB 分块，设备侧自算 md5，追加后再核对文件大小，
+  不一致就重发；失败重发前会自动发 Ctrl-C 复位可能被卡住的 shell。
+* **发送方向用回显校验**：agent 会确认设备回显的命令与我们发送的一致，不一致自动重发
+  （曾观察到 `uname -a` 被丢成 `uname`，从而执行了错误的命令）。
+* **速度约 1～1.2 KB/s**。大文件先压缩：`$S exec 'tar czf /tmp/a.tgz <path>'` 再 `pull`。
+* 单会话：agent 是单线程的，别并发发起多个 `sdb`。
+
+## 排障（详见 references/troubleshooting.md）
+
+1. **`agent closed the connection` / 莫名超时**
+   端点被别的进程抢了。**VS Code 会自动转发它检测到的端口并绑定 `127.0.0.1`**，
+   比反向隧道（通常连 `127.0.0.1`）更具体从而抢走连接。
+   用 `sdb-check.sh --ports` 看监听者，改连 `127.0.0.2:port` 或换端口。
+2. **设备 shell 停在 `>`**（上次传输被中断留下的未闭合引号/here-document）
+   agent 超时会自动发 Ctrl-C；必要时 `$S shell` 里手动 Ctrl-C，或兜底 `$S reset`（先确认）。
+3. **`push` 报 `verified=False`** 重试；持续失败就降波特率，或先压缩文件。
+
+## 安全
+
+* 破坏性操作（`rm`、`dd`、写 flash、`reset`、刷固件）**必须**先与用户确认，
+  并先 `$S exec 'uname -a; hostname'` 确认目标是预期设备——端口/隧道可能指向另一台设备。
+* `push` 会覆盖目标路径，先 `$S exec 'ls -l <dir>'` 看看。
+* 不要把 agent 端口暴露到公网；TCP 方式配合 `SDB_TOKEN`（agent 用 `--auth` 启动）或 SSH。

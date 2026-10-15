@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# sdb -- talk to the embedded board through the client-side serial agent.
+#
+#   sdb info                        agent + device information
+#   sdb exec 'uname -a'             run a shell command on the board
+#   sdb push ./fw.bin /tmp/fw.bin   upload to the board (device-side md5 verified)
+#   sdb pull /etc/hostname ./h      download from the board
+#   sdb md5 /tmp/fw.bin             device-side md5 of a file
+#   sdb reset                       reboot the board via DTR
+#
+# Target resolution: environment > config file > built-in default.
+#   SDB_TCP              host[:port] connect to an already-listening agent (default 127.0.0.1:17801)
+#   SDB_SSH              user@host   let devctl launch the agent over ssh (needs server->client ssh)
+#   SDB_PORT, SDB_BAUD   serial device/baud on the client (only used with SDB_SSH)
+#   SDB_REMOTE_AGENT     agent path on the client (only used with SDB_SSH)
+#   SDB_TOKEN            auth token, if the agent was started with --auth
+#   SDB_DEVCTL           path to devctl.py
+#   SDB_CONFIG           config file (default ~/.config/serial-debug-bridge/target)
+#   SDB_TIMEOUT          outer hard timeout in seconds, 0 disables (default 180;
+#                        a 60 KB upload alone takes ~50 s at 460800 baud)
+#   SDB_EXTRA            extra devctl flags, word-split (e.g. "-q --timeout 120000")
+set -euo pipefail
+
+DEVCTL="${SDB_DEVCTL:-/SSD4T2/home/yi_wang/serial-debug-bridge/devctl.py}"
+# Fall back to the usual locations so the wrapper is not tied to one host.
+if [ ! -f "$DEVCTL" ]; then
+  for c in "$HOME/serial-debug-bridge/devctl.py" "$HOME/.local/share/serial-debug-bridge/devctl.py" "./cli/devctl.py"; do
+    [ -f "$c" ] && DEVCTL="$c" && break
+  done
+fi
+CFG="${SDB_CONFIG:-$HOME/.config/serial-debug-bridge/target}"
+
+tcp="127.0.0.1:17801"
+ssh_target=""
+port="/dev/ttyUSB0"
+baud="115200"
+remote_agent=""
+token=""
+
+if [ -f "$CFG" ]; then
+  # shellcheck disable=SC1090
+  . "$CFG"
+fi
+
+tcp="${SDB_TCP:-$tcp}"
+ssh_target="${SDB_SSH:-$ssh_target}"
+port="${SDB_PORT:-$port}"
+baud="${SDB_BAUD:-$baud}"
+remote_agent="${SDB_REMOTE_AGENT:-$remote_agent}"
+token="${SDB_TOKEN:-$token}"
+
+if [ ! -f "$DEVCTL" ]; then
+  echo "sdb: devctl.py not found: $DEVCTL (set SDB_DEVCTL)" >&2
+  exit 2
+fi
+
+args=()
+if [ -n "$ssh_target" ]; then
+  args+=(--ssh "$ssh_target" --port "$port" --baud "$baud")
+  if [ -n "$remote_agent" ]; then
+    args+=(--remote-agent "$remote_agent")
+  fi
+else
+  args+=(--tcp "$tcp")
+fi
+if [ -n "$token" ]; then
+  args+=(--token "$token")
+fi
+
+extra=()
+if [ -n "${SDB_EXTRA:-}" ]; then
+  # shellcheck disable=SC2206
+  extra=(${SDB_EXTRA})
+fi
+
+# devctl itself never gives up on a wedged agent, so keep an outer hard timeout.
+to="${SDB_TIMEOUT:-180}"
+if [ "$to" = "0" ]; then
+  exec python3 "$DEVCTL" "${args[@]}" "${extra[@]}" "$@"
+fi
+exec timeout -k 5 "$to" python3 "$DEVCTL" "${args[@]}" "${extra[@]}" "$@"
