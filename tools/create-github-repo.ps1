@@ -115,6 +115,7 @@ try {
   }
   if ($existing) {
     Write-Host "    exists: $($existing.full_name) (visibility=$($existing.private))"
+    try {
     Invoke-Gh 'PATCH' "$api/repos/$Owner/$Repo" @{
       description              = $settings.description
       has_issues               = [bool]$settings.has_issues
@@ -130,6 +131,11 @@ try {
       squash_merge_commit_title  = $settings.squash_merge_commit_title
       merge_commit_title         = $settings.merge_commit_title
     } 'patch' | Out-Null
+      Write-Host '    settings updated'
+    } catch {
+      Write-Host '    warn: this token cannot update repository settings (needs administration:write)'
+      Write-Host '          continuing - settings are cosmetic, the push and the branch rules are not'
+    }
   } else {
     $body = @{
       name                     = $Repo
@@ -155,11 +161,13 @@ try {
   # topics (separate endpoint, preview header not required anymore)
   if ($settings.topics) {
     if (-not $DryRun) {
+      try {
       $t = @{ names = @($settings.topics) } | ConvertTo-Json
       Invoke-WebRequest -Method Put -Uri "$api/repos/$Owner/$Repo/topics" -Headers $headers `
         -ContentType 'application/vnd.github.mercy-preview+json' -Body ([Text.Encoding]::UTF8.GetBytes($t)) `
         -UseBasicParsing | Out-Null
       Write-Host "    topics set"
+      } catch { Write-Host "    warn: cannot set topics with this token; continuing" }
     } else { Write-Host "[dry-run] PUT topics" }
   }
 
@@ -173,10 +181,12 @@ try {
     & git -c "http.extraheader=AUTHORIZATION: basic $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($Owner):$Token")))" `
         push --quiet -u origin $BaseBranch
     if ($LASTEXITCODE -ne 0) {
-      Write-Host '  The push was rejected. The usual cause is a repository created WITH an'
-      Write-Host '  initial commit (README / .gitignore / licence ticked in the web form).'
-      Write-Host '  Either delete and recreate it empty, which is what this project prefers,'
-      Write-Host '  or adopt the existing history first:'
+      Write-Host '  The push was rejected. Two usual causes:'
+      Write-Host '    - the token cannot write to this repository (needs Contents: write; a'
+      Write-Host '      GitHub App user token from an editor sign-in is often read-only),'
+      Write-Host '    - or the repository was created WITH an initial commit (README /'
+      Write-Host '      .gitignore / licence ticked in the web form).'
+      Write-Host '  For the second case, recreate it empty, or adopt the existing history:'
       Write-Host '      git pull --rebase origin main'
       Write-Host '      git push -u origin main'
       throw 'git push failed'
@@ -209,7 +219,18 @@ try {
     lock_branch              = [bool]$protection.lock_branch
     allow_fork_syncing       = [bool]$protection.allow_fork_syncing
   }
-  Invoke-Gh 'PUT' "$api/repos/$Owner/$Repo/branches/$BaseBranch/protection" $payload 'protection' | Out-Null
+  try {
+    Invoke-Gh 'PUT' "$api/repos/$Owner/$Repo/branches/$BaseBranch/protection" $payload 'protection' | Out-Null
+  } catch {
+    Write-Host ''
+    Write-Host '  Branch protection was NOT applied, so main is still open for direct pushes.'
+    Write-Host '  The token needs repository administration rights for this call:'
+    Write-Host '    - classic token: the repo scope (you already own the repository)'
+    Write-Host '    - fine-grained token: Contents=Read/Write and Administration=Read/Write'
+    Write-Host '  A GitHub App user token from an editor sign-in (ghu_...) is usually read-only.'
+    Write-Host '  Re-run this script once a capable token is exported as $env:GH_TOKEN.'
+    throw
+  }
 
   # ---- 4. optional release ----
   if ($Release) {
