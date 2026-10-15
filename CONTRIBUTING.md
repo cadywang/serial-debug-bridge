@@ -65,12 +65,20 @@ Signed-off-by: <作者姓名> <作者邮箱>
 
 ### 3.2 DCO 签名（必须）
 
-每个提交都要有 `Signed-off-by:`，且与作者身份一致（开发者原创证书）。用参数即可自动加上：
+每个提交都要有 `Signed-off-by:`，且与作者身份一致（Developer Certificate of Origin）。
+首次克隆仓库后跑一次环境配置即可自动签名、自动本地校验：
 
 ```bash
-git commit -s
+bash tools/dev-setup.sh
+# 等价于：
+#   git config format.signOff true          # 之后 git commit 自动加签名
+#   git config core.hooksPath tools/git-hooks   # 启用 commit-msg 规范钩子
 ```
 
+也可以显式加 `-s`：`git commit -s`。
+
+> 注意：`git` 是在 `commit-msg` 钩子**之后**才写入签名的，所以钩子只把「缺签名」当作提示；
+> 真正的 DCO 强制在 CI 的 `Commit style` 步骤（按提交范围检查）完成。
 ### 3.3 一个提交只做一件逻辑上的事
 
 * 功能、重构、格式化、文档不要混在同一提交里；每个提交都应可独立编译/自测通过，
