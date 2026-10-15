@@ -82,3 +82,20 @@ SDB_EXTRA="-q" SDB_TIMEOUT=600   sdb push big.bin /tmp/big.bin
 * 在 server 上把命令写进脚本文件再执行（`scp` 上去后 `bash script.sh`）；
 * 或远端外层用单引号、内部避免再嵌套引号；
 * 单条命令优先用 `sdb exec '...'` 且不要在 ssh 的同一层再包双引号。
+## 9. 传输中途失败，控制台出现启动横幅 / `login:`
+
+如果 `push`/`pull` 中途报 `upload failed (lock-step ack timeout)`，而随后 `sdb-check.sh`
+或 `sdb exec` 的输出里出现内核启动横幅、`login:` 或 `Poky ... ttyS0`，
+那**不是桥的故障——是设备自己重启了**（看门狗、掉电、被其它工具打断等）。
+
+agent 在超时时会把控制台最后约 200 字节写进日志（`-LogFile`），
+先看那条 `console said: ...` / `timeout waiting for the marker; console said: ...` 再判断。
+
+处理：
+
+* 在控制台重新登录（需要登录的镜像；多数开发板 root 无密码），提示符回来后重传；
+* 中途重启会留下半个文件：重传前删掉目标文件，或让 `push` 直接覆盖；
+* 若频繁重启，先排查设备侧（供电、看门狗、内存）——串口传输本身不会导致重启。
+
+> 实测：一次 200 KB 上传失败正是因为设备在传输中重启；重新登录后同一操作
+> 90 秒完成且 md5 一致。

@@ -93,6 +93,9 @@ $S exec 'command -v busybox base64 openssl awk od md5sum'
 2. **设备 shell 停在 `>`**（上次传输被中断留下的未闭合引号/here-document）
    agent 超时会自动发 Ctrl-C；必要时 `$S shell` 里手动 Ctrl-C，或兜底 `$S reset`（先确认）。
 3. **`push` 报 `verified=False`** 重试；持续失败就降波特率，或先压缩文件。
+4. **传输中途失败且控制台出现启动横幅 / `login:`**
+   设备自己重启了，不是桥的问题。agent 超时会把控制台最后 200 字节打进日志
+   （`console said: ...`），先看那条；重新登录后再传。
 
 ## 安全
 
