@@ -1,0 +1,22 @@
+{
+  "name": "serial-debug-bridge",
+  "description": "Debug an embedded device over a remote serial console: run commands and transfer files from a server, through TCP or SSH, to a UART attached to another machine.",
+  "homepage": "",
+  "private": false,
+  "has_issues": true,
+  "has_projects": false,
+  "has_wiki": false,
+  "has_discussions": true,
+  "allow_squash_merge": true,
+  "allow_merge_commit": false,
+  "allow_rebase_merge": false,
+  "allow_auto_merge": false,
+  "delete_branch_on_merge": true,
+  "squash_merge_commit_message": "COMMIT_MESSAGES",
+  "squash_merge_commit_title": "PR_TITLE",
+  "merge_commit_title": "PR_TITLE",
+  "topics": [
+    "serial", "uart", "embedded", "debugging", "busybox",
+    "serial-console", "remote-debugging", "yocto", "devctl"
+  ]
+}
