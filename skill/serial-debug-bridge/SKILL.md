@@ -97,6 +97,20 @@ $S exec 'command -v busybox base64 openssl awk od md5sum'
    设备自己重启了，不是桥的问题。agent 超时会把控制台最后 200 字节打进日志
    （`console said: ...`），先看那条；重新登录后再传。
 
+5. **设备停在 `login:`（重启后最常见）——先以 root 登录，别硬试**
+   登录提示符要的是「用户名 + 密码」两行，而 `exec` 发的是「命令 + 探针」，
+   于是命令被当成用户名、探针行被当成密码：**必然失败，还白等一个 30 秒超时**（试几次就是几分钟）。
+   这些开发板 root 通常**无密码**，直接登录即可：
+
+   * 人在终端：`$S shell` → 看到 `login:` 输入 `root` 回车 → `Ctrl+]` 退出；
+   * 脚本化 / 无人值守：client 上以 **raw 透传**启动 agent（先停掉协议模式 agent，串口独占）：
+     `powershell -File <client>\agent\serial_agent.ps1 -Port COM3 -Baud 460800 -TcpPort 17801 -Raw`，
+     再从 server 侧发两行：`printf '\nroot\n' | nc 127.0.0.1 17801`，看到 `root@<host>:~#` 即成功；
+     然后停掉 raw agent、改回协议模式重启 agent。
+
+   登录状态会一直保持（agent 持有同一条串口会话），所以**一次会话只需登录一次**。
+   详见 `references/troubleshooting.md` §10。
+
 ## 发现 bug：请提交 patch，不要只绕过去
 
 这套桥（`agent/*`、`cli/*`、`tests/*`、`skill/*`）由维护者在 GitHub 上持续修正。

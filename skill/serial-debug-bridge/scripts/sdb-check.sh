@@ -55,7 +55,21 @@ if ! "$PY" "$DEVCTL" --tcp "$TARGET" info; then
 fi
 
 echo "== device identity =="
-"$PY" "$DEVCTL" --tcp "$TARGET" exec "uname -a; hostname 2>/dev/null" || true
+IDENT="$("$PY" "$DEVCTL" --tcp "$TARGET" exec "uname -a; hostname 2>/dev/null" 2>&1)" || true
+printf '%s\n' "$IDENT"
+
+# After a reboot the console usually sits at a login prompt. Retrying exec there
+# only burns one 30 s timeout per attempt, so say it once and point at the fix.
+if printf '%s' "$IDENT" | grep -qi 'login:'; then
+    echo
+    echo "!! the device is sitting at a login prompt (login:)."
+    echo "!! do NOT retry exec: each attempt just burns a 30 s timeout."
+    echo "!! log in as root (usually password-less), then continue:"
+    echo "!!   interactive: sdb shell  ->  type: root  ->  Ctrl+]"
+    echo "!!   scripted   : start the agent with -Raw / --raw and send:"
+    echo "!!                printf '\nroot\n' | nc <client>:<port>"
+    echo "!!   details: references/troubleshooting.md section 10"
+fi
 
 echo "== transfer capability =="
 "$PY" "$DEVCTL" --tcp "$TARGET" exec "command -v busybox base64 openssl awk od md5sum 2>/dev/null" || true

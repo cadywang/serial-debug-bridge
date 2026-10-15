@@ -407,6 +407,10 @@ journalctl -u serial-agent -f
 * 设备控制台**没停在 shell 提示符**上（比如停在登录界面、或正在跑某个前台程序）。
   先用 `devctl ... shell` 进入看看到底停在哪；登录/退出前台程序后 `exec` 即可正常工作。
   （agent 会一直持有串口，所以一旦进入 shell，后续 `exec` 都有效。）
+* 设备**重启后会停在 `login:`**：直接以 **root** 登录（这些开发板 root 通常无密码），
+  **不要反复用 `exec` 试** —— 它会把命令当用户名、探针行当密码，每次白等一个 30 秒超时。
+  登录方式（`devctl ... shell` 手动登录，或 raw 透传模式发 `root`）见 skill 的
+  `references/troubleshooting.md` 第 10 节。
 * 波特率/串口名不对：核对 `-Port` `-Baud` / `--port` `--baud`，确认设备实际参数。
 * 换行/回车不对：极少数设备只认 `\r`，可在设备侧 `stty` 调整，或先 `shell` 手动敲一次。
 
