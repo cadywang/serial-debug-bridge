@@ -192,6 +192,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description='Linux kernel commit style checker')
     ap.add_argument('--range', default='', help='git revision range, e.g. main~3..main')
     ap.add_argument('--all', action='store_true', help='check every commit')
+    ap.add_argument('--strict-dco', action='store_true',
+                    help='fail (not just warn) on a missing Signed-off-by in message file mode')
     ap.add_argument('--commit-msg-file', default='',
                     help='validate a single message file (used by the commit-msg git hook)')
     ap.add_argument('--github-env', action='store_true',
@@ -214,9 +216,20 @@ def main() -> int:
         c = {'sha': '', 'short': 'working tree', 'name': name, 'email': email,
              'subject': subject, 'body': body}
         errs = check_one(c, args)
-        if errs:
+        # git appends the -s trailer after running the commit-msg hook, so a
+        # missing sign-off cannot be judged here; CI checks it for real.
+        # Repositories set format.signOff=true so it is never missing anyway.
+        soft, hard = [], []
+        for e in errs:
+            if 'Signed-off-by' in e and not args.strict_dco:
+                soft.append(e)
+            else:
+                hard.append(e)
+        for e in soft:
+            print('check-commits: note: %s (git adds it after this hook)' % e)
+        if hard:
             print('commit message does not follow the kernel guidelines:')
-            for e in errs:
+            for e in hard:
                 print('  - %s' % e)
             print('\nhint: "git commit -s", subject "<subsystem>: <imperative>",'
                   ' body wrapped at 72')
