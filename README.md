@@ -501,6 +501,10 @@ CI 必需检查（`governance/branch-protection.json` 中的 contexts）：
 * 安全问题**不要**开公开 Issue，见 [`SECURITY.md`](SECURITY.md)。
 * 提问前先看 [`SUPPORT.md`](SUPPORT.md)，Issue/PR 模板在 `.github/`。
 * 依赖更新由 `.github/dependabot.yml` 发起 PR（同样需要审查批准才能合入）。
+* 面向 server 的 Codex skill 在 `skill/serial-debug-bridge/`，安装到 server 的
+  `~/.codex/skills/` 后即可让 server 侧的 Codex 直接调用（`scripts/sdb` 为统一入口，
+  `scripts/sdb-check.sh` 做链路与设备身份自检）：
+  `scp -r skill/serial-debug-bridge <server>:~/.codex/skills/`
 * 重新施加/校验保护规则：
   `pwsh -File tools/create-github-repo.ps1 -Owner <you>`（幂等，支持 `-DryRun`）。
 

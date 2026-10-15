@@ -23,6 +23,8 @@
 - 上传逐块 md5 校验 + 失败自动重传；下载完成后二次校验。
 - 输出清洗：剥离 shell 提示符与 ANSI 颜色转义。
 - 设备复位：通过 DTR 复位开发板（`devctl reset`）。
+- 面向 server 的 Codex skill 打包（`skill/serial-debug-bridge/`）：`scripts/sdb` 端点包装脚本、
+  `scripts/sdb-check.sh` 链路与设备身份自检、排障手册与调用约定。
 - 工程化：MIT 许可、贡献/安全/行为准则文档、Issue 与 PR 模板、
   CI（Windows PowerShell 与跨平台 Python 两套 mock 测试 + 交叉实现检查）、
   `verify-live.sh` 真机端到端验证脚本。
@@ -38,6 +40,12 @@
 - `Raw-Pipe` 使用 `DataAvailable` 轮询，客户端断开后不退出，使单线程代理永久阻塞。
 - 代理脚本参数 `$Codec` 与内部缓存变量同名（PowerShell 变量大小写不敏感）导致相互覆盖。
 - `devctl.py` 把连接超时沿用为读超时，长传输被误判失败。
+- 上传只校验了「解码后的临时文件」，目标路径被链路噪声改坏时 `cat` 会写到别处并成功返回，
+  导致静默丢块；现在追加后再核对目标文件大小，不一致即重发。
+- 发送方向同样会丢字节：一次实测中 `uname -a` 被丢成 `uname`，执行了错误的命令。
+  现在用终端回显校验设备收到的命令行是否与发送一致，不一致自动重发。
+- 上传分块重发前先发送 Ctrl-C：被破坏的命令可能把 shell 留在 here-document 或未闭合
+  引号里，否则后续重试会全部超时。
 
 ### 验证
 - 本地 mock 自测：`serial_agent.ps1` + `devctl.ps1` **9/9**；`serial_agent.py` + `devctl.py` **8/8**
