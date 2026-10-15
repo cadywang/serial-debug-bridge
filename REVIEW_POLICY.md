@@ -1,0 +1,74 @@
+# 审查与合并规则（REVIEW_POLICY）
+
+> 一句话：**`main` 上的任何改动都必须来自一个 Pull Request，并通过 CI 的全部必需检查；
+> 没有人（包括管理员）可以直接推送或改写 `main`。**
+
+本仓库与 `cadywang.github.io` 使用同一套审查思路：**闸门不可绕过、自动校验先行、合并前必须有人过目**。
+区别只在于本仓库没有「发布」环节——落地动作就是 PR 合并本身。
+
+## 一、三道闸门
+
+| 闸门 | 位置 | 拦什么 | 能不能绕过 |
+| --- | --- | --- | --- |
+| ① 分支保护 | `governance/branch-protection.json`（由 `tools/create-github-repo.ps1` 施加） | 直推 `main`、强推、删分支、检查没绿就合并 | 不能：`enforce_admins: true` + 空 bypass，管理员也一样 |
+| ② 自动校验 | `.github/workflows/ci.yml` | BOM/CRLF、语法、两套实现自测、交叉验证、commit 规范 + DCO | 不能：改 CI 自己也要走同一个 PR 流程 |
+| ③ 人工审查 | PR 本身 | 维护者看过 diff、复现步骤、自测输出后才合并 | 单人维护时维护者即作者（GitHub 不允许自批，因此不设强制批准数）；有协作者后提升为「必须他人批准」 |
+
+## 二、日常流程
+
+```bash
+git switch -c agent/hex-retry        # <subsystem>/<short-description>
+# ... 改代码、文档、自测 ...
+python3 tools/check-commits.py --range main..HEAD
+git commit -s                        # DCO 签名，见 CONTRIBUTING.md §3
+git rebase main                      # 保持线性历史
+git push -u origin agent/hex-retry
+# 在 GitHub 开 PR（模板自动带上）→ 等 CI 五个 job 全绿 → 维护者审阅 → 合并
+```
+
+## 三、补丁必须保持同步（本仓库最容易踩的雷）
+
+只改一半，会让「四种版本任意组合」当场失效。**以下必须同一次提交里一起更新**：
+
+| 改了 | 必须同时改 |
+| --- | --- |
+| `agent/serial_agent.ps1` | `agent/serial_agent.py` |
+| `cli/devctl.ps1` | `cli/devctl.py` |
+| 协议行为（帧格式、编码、超时语义） | `PROTOCOL.md` + 两套实现 + 两套 mock（`tests/*`） |
+| 面向用户的行为 | `README.md`、`CHANGELOG.md` |
+| skill 用到的入口/参数（`scripts/sdb`、环境变量） | `skill/serial-debug-bridge/SKILL.md` 与 `references/` |
+
+CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent」这类组合，
+**覆盖不了语义是否一致**——所以人工审查时要专门盯这一项。
+
+## 四、几个实测过的坑
+
+1. **Squash 合并会重写作者**：squash 提交的作者是 GitHub 账号（邮箱取账号设置），
+   而 `Commit style` 检查要求 `Signed-off-by:` 与作者一致。稳妥做法是让本地 `user.email`
+   与 GitHub 账号邮箱一致，并在 PR 正文里也带上 `Signed-off-by: <同一邮箱>`；
+   或者改用 rebase 合并（保留原作者）。
+2. **`strict` 检查要求 PR 追上最新 `main`**：main 前进后旧 PR 需要 rebase / update 才能合并
+   （dependabot 的 PR 会自动更新）。
+3. **单人维护不要设 `required_approving_review_count: 1`**：GitHub 不允许自己批准自己的 PR，
+   设了就会把自己锁死。
+4. **`.github/CODEOWNERS` 只有在开启「Require review from Code Owners」时才有强制力**；
+   单人模式下该开关保持关闭是刻意的。
+
+## 五、调整规则
+
+| 想做什么 | 怎么做 |
+| --- | --- |
+| 收紧到「必须他人批准」 | 先加协作者 / 第二账号，再把 `required_approving_review_count` 设为 1，`require_code_owner_reviews`、`require_last_push_approval` 设为 true，重跑 `tools/create-github-repo.ps1` |
+| 只要最基础保护（禁强推 / 禁删除） | 把 `required_pull_request_reviews` 与 `required_status_checks` 置空后重新施加 |
+| 临时救急 | 改 GitHub Settings → Rules 后重跑脚本恢复；**不要**长期留 bypass |
+
+## 六、提交前的本地自查
+
+```bash
+python3 tools/check-commits.py --range main..HEAD   # commit 规范 + DCO
+powershell -ExecutionPolicy Bypass -File tests/selftest.ps1
+powershell -ExecutionPolicy Bypass -File tests/selftest.ps1 -Codec hex
+python3 tests/test_e2e.py
+python3 tests/test_e2e.py --agent-args '--codec hex'
+bash tests/verify-live.sh <client-ip>:7801          # 有真机时再跑
+```

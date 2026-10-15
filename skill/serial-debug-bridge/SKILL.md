@@ -114,7 +114,7 @@ $S exec 'command -v busybox base64 openssl awk od md5sum'
 6. **确实只能绕过时**（换编码、降波特率、改端口等）：在结果里写清**绕过了什么、为什么、风险是什么**，
    并给出建议的修复方向——别让同一个坑下次再踩。
 
-> 仓库约定：改动走 PR、CI 全绿后合并（`main` 不接受直接推送），细节见 `CONTRIBUTING.md`。
+> 仓库约定：补丁必须走 PR、CI 全绿后由维护者合并（`main` 不接受直接推送），且**两套实现与文档必须同步修改**——详见仓库根目录的 `REVIEW_POLICY.md` 与 `CONTRIBUTING.md`。
 
 ## 安全
 

@@ -69,6 +69,7 @@ serial-debug-bridge/
 ├── README.md                  ← 本文档（中文）
 ├── PROTOCOL.md                ← 通信协议参考（中文）
 ├── CONTRIBUTING.md            ← 贡献流程与代码规范（中文）
+├── REVIEW_POLICY.md           ← 审查与合并规则：闸门、补丁同步、实测坑（中文）
 ├── CHANGELOG.md               ← 更新日志（Keep a Changelog）
 ├── SECURITY.md                ← 漏洞披露策略与安全须知
 ├── SUPPORT.md                 ← 求助与提问需要带的信息
@@ -479,9 +480,9 @@ python3 tests/test_e2e.py --target 127.0.0.1:7801
 | --- | --- |
 | 直推 `main` | ❌ 禁止（`enforce_admins: true`，管理员也一样） |
 | 合并方式 | ✅ 仅 Squash merge，线性历史 |
-| 必需审查 | ✅ 至少 **1 个 approving review**，且需 **CODEOWNERS** 批准 |
+| 必需审查 | ✅ 必须走 PR + CI 全绿；单人维护模式下由维护者审阅后合并（`required_approving_review_count: 0`，原因见 [REVIEW_POLICY.md](REVIEW_POLICY.md)） |
 | 过期审查 | 有新提交后自动作废（`dismiss_stale_reviews`） |
-| 最近推送审批 | ✅ `require_last_push_approval` |
+| 最近推送审批 | ⚙️ 单人模式下关闭（`require_last_push_approval: false`）；有第二位维护者时开启 |
 | 必需状态检查 | ✅ CI 五个 job 全绿且为最新提交（见下表） |
 | 讨论resolve | ✅ 全部 conversation 需被解决 |
 | 强推 / 删除分支 | ❌ 禁止 |
@@ -498,6 +499,7 @@ CI 必需检查（`governance/branch-protection.json` 中的 contexts）：
 相关约定：
 
 * 贡献流程、代码风格（**代码注释英文 / 文档中文**、UTF-8 无 BOM、LF）见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+* 审查与合并规则（三道闸门、补丁同步清单、已实测的坑）见 [`REVIEW_POLICY.md`](REVIEW_POLICY.md)。
 * 安全问题**不要**开公开 Issue，见 [`SECURITY.md`](SECURITY.md)。
 * 提问前先看 [`SUPPORT.md`](SUPPORT.md)，Issue/PR 模板在 `.github/`。
 * 依赖更新由 `.github/dependabot.yml` 发起 PR（同样需要审查批准才能合入）。
