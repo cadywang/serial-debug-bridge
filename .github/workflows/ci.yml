@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Hygiene (encoding, line endings, syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject UTF-8 BOM
+        run: |
+          bad=0
+          while IFS= read -r -d '' f; do
+            if [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              echo "::error file=$f::has UTF-8 BOM"; bad=1
+            fi
+          done < <(find . -path ./.git -prune -o -type f \( -name '*.ps1' -o -name '*.py' -o -name '*.sh' -o -name '*.md' -o -name '*.yml' \) -print0)
+          exit "$bad"
+
+      - name: Reject CRLF in sh / py / yml
+        run: |
+          bad=0
+          for pat in '*.sh' '*.py' '*.yml'; do
+            while IFS= read -r -d '' f; do
+              if LC_ALL=C grep -q "$(printf '\r')" "$f"; then
+                echo "::error file=$f::CRLF line ending"; bad=1
+              fi
+            done < <(find . -path ./.git -prune -o -type f -name "$pat" -print0)
+          done
+          exit "$bad"
+
+      - name: Python syntax
+        run: python3 -m compileall -q agent cli tests
+
+      - name: Shell syntax
+        run: |
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" && echo "bash -n OK: $f"
+          done
+
+      - name: YAML sanity (no tabs)
+        run: |
+          for f in $(git ls-files '*.yml' '*.yaml'); do
+            if grep -Pn '\t' "$f" > /dev/null; then echo "::error file=$f::tab character in YAML"; exit 1; fi
+          done
+          echo "yaml sanity OK"
+
+      - name: Commit style (Linux kernel guidelines + DCO)
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 tools/check-commits.py --github-env
+          else
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
+              python3 tools/check-commits.py --range "${before}..${GITHUB_SHA}"
+            else
+              python3 tools/check-commits.py
+            fi
+          fi
+
+      - name: YAML parse
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          python3 -c "import glob,sys,yaml; files=glob.glob('.github/**/*.yml',recursive=True)+glob.glob('.github/**/*.yaml',recursive=True); [list(yaml.safe_load_all(open(f,encoding='utf-8'))) for f in files]; print('yaml parsed:', len(files))"
+
+  test-powershell:
+    name: PowerShell agent + CLI (mock)
+    needs: hygiene
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell syntax check
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($f in (Get-ChildItem -Recurse -File -Include *.ps1)) {
+            $errs = $null
+            [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $f.FullName), [ref]$errs)
+            if ($errs -and $errs.Count) {
+              $bad = 1
+              foreach ($e in $errs) { Write-Host "::error file=$($f.Name)::line $($e.Token.StartLine): $($e.Message)" }
+            } else {
+              Write-Host "parse OK: $($f.Name)"
+            }
+          }
+          if ($bad) { exit 1 }
+
+      - name: selftest (auto codec)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/selftest.ps1 -Port 17801
+
+      - name: selftest (hex codec)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/selftest.ps1 -Port 17802 -Codec hex
+
+  test-python:
+    name: Python agent + CLI (mock)
+    needs: hygiene
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: e2e (auto codec)
+        run: python tests/test_e2e.py --port 17810
+
+      - name: e2e (hex codec)
+        run: python tests/test_e2e.py --port 17811 --agent-args "--codec hex"
+
+  crosscheck:
+    name: Cross implementation check
+    needs: [hygiene, test-python, test-powershell]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: devctl.py talks to serial_agent.ps1
+        shell: powershell
+        run: |
+          $a = Start-Process powershell.exe -WindowStyle Hidden -PassThru `
+                -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','agent/serial_agent.ps1','-Mock','-TcpPort','17820') `
+                -RedirectStandardOutput "$env:TEMP\cc.out" -RedirectStandardError "$env:TEMP\cc.err"
+          try {
+            Start-Sleep -Seconds 3
+            python cli/devctl.py --tcp 127.0.0.1:17820 info
+            if ($LASTEXITCODE -ne 0) { throw 'devctl.py could not talk to serial_agent.ps1' }
+            python cli/devctl.py --tcp 127.0.0.1:17820 exec "uname -a"
+            if ($LASTEXITCODE -ne 0) { throw 'cross exec failed' }
+          } finally {
+            Stop-Process -Id $a.Id -Force -ErrorAction SilentlyContinue
+          }
