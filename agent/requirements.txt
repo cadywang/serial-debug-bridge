@@ -1,0 +1,3 @@
+# Only needed when opening a REAL serial port with serial_agent.py.
+# serial_agent.ps1 needs nothing, and --mock needs nothing.
+pyserial>=3.5
