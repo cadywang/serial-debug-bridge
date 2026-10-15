@@ -1,18 +1,14 @@
-# Normalise line endings: shell/python must be LF, Windows scripts keep CRLF-safe LF too.
-* text=auto
+# Pin every text file to LF, so a Windows checkout is byte-identical to a
+# Linux one. A CRLF shebang or a CRLF `set -euo pipefail` breaks shell
+# scripts outright, and CRLF makes whole files show up as changed in diffs.
+* text eol=lf
 
-*.sh   text eol=lf
-*.py   text eol=lf
-*.ps1  text eol=lf
-*.bat  text eol=crlf
-*.cmd  text eol=crlf
-*.yml  text eol=lf
-*.yaml text eol=lf
-*.md   text eol=lf
-*.json text eol=lf
-*.service text eol=lf
+# Caveat for the one batch file: cmd.exe is only fully happy with CRLF once a
+# .bat/.cmd starts using `goto :label`. agent/start-agent.bat has no labels,
+# so LF is fine; should one ever need labels, give that single file an
+# explicit `text eol=crlf` rule here (the last matching rule wins).
 
-# Binary
+# Binary blobs are not text: never touch them.
 *.bin  binary
 *.png  binary
 *.gz   binary
