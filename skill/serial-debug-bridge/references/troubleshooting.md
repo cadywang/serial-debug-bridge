@@ -100,7 +100,44 @@ agent 在超时时会把控制台最后约 200 字节写进日志（`-LogFile`�
 > 实测：一次 200 KB 上传失败正是因为设备在传输中重启；重新登录后同一操作
 > 90 秒完成且 md5 一致。
 
-## 10. 确认是桥的 bug 之后
+## 10. 设备停在 `login:` 提示符（重启后最常见）
+
+**症状**：`exec` 一直超时（rc=124），或 `sdb-check.sh` 的输出里出现
+`Poky (Yocto Project Reference Distro) ... ttyS0` 紧跟着 `login:`。
+
+**为什么不能反复用 `exec` 试**：登录提示符期待的是「用户名 + 密码」两行，而 `exec` 发的是
+「命令文本 + 探针行」——于是命令被当成用户名、探针行被当成密码，**必然登录失败**，
+而且每次都要白等一个 30 秒超时（试三五次就是好几分钟）。
+
+**正确做法：直接以 root 登录（这些开发板 root 通常无密码）**
+
+1. 人在终端前 —— 用交互控制台（仅 TCP）：
+
+   ```bash
+   $S shell            # 看到 login: 后输入 root 回车，Ctrl+] 退出
+   ```
+
+2. 脚本化 / 无人值守 —— 切到 raw 透传模式，直接发两行：
+
+   ```bash
+   # ① client（串口所在机器）上：先停掉协议模式的 agent（串口独占），改用 raw
+   powershell -NoProfile -ExecutionPolicy Bypass -File <client>\agent\serial_agent.ps1 `
+     -Port COM3 -Baud 460800 -TcpPort 17801 -Raw
+
+   # ② server 侧：先发一个空行清掉残留输入，再发 root
+   printf '\nroot\n' | nc 127.0.0.1 17801
+   # 期望：rose-rtd1761 login: root   然后   root@rose-rtd1761:~#
+   ```
+
+3. 登录成功后：停掉 raw agent，重新以**协议模式**启动 agent，`info` / `exec` / `push` 全部恢复。
+
+**要点**
+
+* 登录状态由设备侧持有，agent 只负责搬字节：**一次会话只需登录一次**，之后 `exec` 一直可用。
+* 不要在登录提示符下"多试几次"——那是纯粹浪费时间；不确定卡在哪，先跑一次 `sdb-check.sh`。
+* 少数板子 root 要密码：raw 模式下把密码也发一行即可（`printf '\nroot\n<pw>\n'`）。
+
+## 11. 确认是桥的 bug 之后
 
 本文列的多半是使用姿势与环境问题。若确认是桥自身的缺陷（稳定复现、与设备无关），
 按 `SKILL.md` 的「发现 bug：请提交 patch」把最小复现 + `fix.patch` + 自测输出交回上游，
