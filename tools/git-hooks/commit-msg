@@ -1,12 +1,29 @@
 #!/bin/sh
 # Validate the commit message against the Linux kernel submission guidelines.
+#
 # Install once with:  git config core.hooksPath tools/git-hooks
+#                     (tools/dev-setup.sh does this for you)
 # Bypass in an emergency with:  git commit --no-verify
+#
+# On Windows "python3" often resolves to the Microsoft Store stub, which is
+# present on PATH but exits non-zero without running anything, so probe each
+# candidate instead of trusting command -v.
 set -e
-for py in python3 python; do
-    if command -v "$py" >/dev/null 2>&1; then
-        exec "$py" "$(dirname "$0")/../tools/check-commits.py" --commit-msg-file "$1"
-    fi
-done
-echo "commit-msg hook: python3 not found; skipping style check" >&2
-exit 0
+
+pick_python() {
+    for c in python3 python py; do
+        if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys' >/dev/null 2>&1; then
+            echo "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+PY=$(pick_python) || {
+    echo "commit-msg: no working python found; skipping the style check" >&2
+    echo "commit-msg: CI still validates commit messages for this pull request" >&2
+    exit 0
+}
+
+exec "$PY" "$(dirname "$0")/../../tools/check-commits.py" --commit-msg-file "$1"
