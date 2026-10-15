@@ -67,13 +67,13 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            python3 tools/check-commits.py --github-env
+            python3 tools/check-commits.py --github-env --skip-bots
           else
             before="${{ github.event.before }}"
             if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
-              python3 tools/check-commits.py --range "${before}..${GITHUB_SHA}"
+              python3 tools/check-commits.py --range "${before}..${GITHUB_SHA}" --skip-bots
             else
-              python3 tools/check-commits.py
+              python3 tools/check-commits.py --skip-bots
             fi
           fi
 

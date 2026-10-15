@@ -53,6 +53,10 @@ CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent�
    设了就会把自己锁死。
 4. **`.github/CODEOWNERS` 只有在开启「Require review from Code Owners」时才有强制力**；
    单人模式下该开关保持关闭是刻意的。
+5. **dependabot 的提交永远不符合内核风格**：它自动生成 `ci: bump <pkg> from 4 to 7`，
+   而 `bump` 属于被禁止的动词（实测在本仓库的两个 dependabot PR 上就是这么红的）。
+   CI 用 `--skip-bots` 放行 `*[bot]` 的提交、其余检查照跑；否则一旦把 CI 设为必需检查，
+   依赖更新的 PR 会永久卡住。
 
 ## 五、调整规则
 

@@ -502,7 +502,7 @@ CI 必需检查（`governance/branch-protection.json` 中的 contexts）：
 * 审查与合并规则（三道闸门、补丁同步清单、已实测的坑）见 [`REVIEW_POLICY.md`](REVIEW_POLICY.md)。
 * 安全问题**不要**开公开 Issue，见 [`SECURITY.md`](SECURITY.md)。
 * 提问前先看 [`SUPPORT.md`](SUPPORT.md)，Issue/PR 模板在 `.github/`。
-* 依赖更新由 `.github/dependabot.yml` 发起 PR（同样需要审查批准才能合入）。
+* 依赖更新由 `.github/dependabot.yml` 发起 PR（同样要过 CI 五个 job；bot 生成的提交按 `--skip-bots` 豁免 commit 风格检查，见 [`REVIEW_POLICY.md`](REVIEW_POLICY.md)）。
 * 面向 server 的 Codex skill 在 `skill/serial-debug-bridge/`，安装到 server 的
   `~/.codex/skills/` 后即可让 server 侧的 Codex 直接调用（`scripts/sdb` 为统一入口，
   `scripts/sdb-check.sh` 做链路与设备身份自检）：

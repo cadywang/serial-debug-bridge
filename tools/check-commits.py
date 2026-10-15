@@ -22,6 +22,11 @@ Usage:
 
 Exit status is non-zero if any commit violates the rules, so this can be used
 both as a pre-commit/rebase hook and as a CI gate.
+
+Machine-generated commits (dependabot and friends) can be exempted with
+--skip-bots: the bot writes "ci: bump <pkg> from 4 to 7", which no bot will
+ever phrase in kernel style, so failing the gate would only block the update
+forever.
 """
 from __future__ import annotations
 
@@ -53,6 +58,15 @@ ALLOWED_TRAILERS = {
 }
 SEP = '\x1f'   # field separator
 RS = '\x1e'    # record separator (a commit message body contains newlines)
+
+BOT_NAME_RE = re.compile(r'\[bot\]$', re.I)
+
+
+def is_bot(c: dict) -> bool:
+    '''Machine-generated commit: dependabot and other GitHub apps.'''
+    name = (c.get('name') or '').strip()
+    mail = (c.get('email') or '').lower()
+    return bool(BOT_NAME_RE.search(name)) or 'dependabot' in mail
 
 
 def run(*args: str, required: bool = True):
@@ -209,6 +223,8 @@ def main() -> int:
                     help='validate a single message file (used by the commit-msg git hook)')
     ap.add_argument('--github-env', action='store_true',
                     help='derive the range from the GitHub Actions event payload')
+    ap.add_argument('--skip-bots', action='store_true',
+                    help='skip machine-generated commits (dependabot, *[bot])')
     ap.add_argument('--subject-max', type=int, default=72)
     ap.add_argument('--body-max', type=int, default=75)
     args = ap.parse_args()
@@ -257,7 +273,12 @@ def main() -> int:
         return 0
 
     bad = 0
+    skipped = 0
     for c in items:
+        if args.skip_bots and is_bot(c):
+            print('skip  %s  %s (machine generated)' % (c['short'], c['subject']))
+            skipped += 1
+            continue
         errs = check_one(c, args)
         if errs:
             bad += 1
@@ -267,8 +288,12 @@ def main() -> int:
         else:
             print('ok    %s  %s' % (c['short'], c['subject']))
     print('')
-    print('check-commits: %d/%d commits follow the kernel guidelines'
-          % (len(items) - bad, len(items)))
+    suffix = ''
+    if skipped:
+        suffix = ' (%d machine-generated commit(s) skipped)' % skipped
+    total = len(items) - skipped
+    print('check-commits: %d/%d commits follow the kernel guidelines%s'
+          % (total - bad, total, suffix))
     if bad:
         print('hint: use "git commit -s" and see CONTRIBUTING.md')
     return 1 if bad else 0
