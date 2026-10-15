@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用帮助与提问
+    url: https://github.com/cadywang/serial-debug-bridge/blob/main/SUPPORT.md
+    about: 先读 SUPPORT.md；使用类问题欢迎开 Discussion
+  - name: 安全漏洞报告（请勿公开）
+    url: https://github.com/cadywang/serial-debug-bridge/blob/main/SECURITY.md
+    about: 安全问题请按 SECURITY.md 私下报告维护者

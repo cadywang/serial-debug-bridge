@@ -1,0 +1,39 @@
+name: "\U0001F680 功能请求 (Feature request)"
+description: 提议一个新能力
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 这个功能解决什么场景？没有它你会怎么做？
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的方案
+      description: 命令行长什么样？协议要怎么变？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响范围
+      multiple: true
+      options:
+        - agent (ps1)
+        - agent (py)
+        - devctl (py)
+        - devctl (ps1)
+        - 协议（PROTOCOL.md）
+        - 文档
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息
+      description: 设备型号、固件、链路速率等约束

@@ -1,0 +1,10 @@
+# 所有改动都需要代码所有者审核（配合分支保护的 "Require review from Code Owners"）。
+# 请把 @cadywang 换成实际的 GitHub 用户名/团队。
+
+*                                       @cadywang
+
+/agent/                                 @cadywang
+/cli/                                   @cadywang
+/tests/                                 @cadywang
+/PROTOCOL.md                            @cadywang
+/.github/                               @cadywang

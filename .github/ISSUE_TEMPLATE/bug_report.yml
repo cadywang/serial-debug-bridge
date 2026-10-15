@@ -1,0 +1,54 @@
+name: "\U0001F41B 缺陷报告 (Bug report)"
+description: 报告一个可复现的问题
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先跑一遍离线自测，确认不是环境问题：
+        `powershell -File tests/selftest.ps1` 或 `python3 tests/test_e2e.py`
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 发生了什么？期望是什么？
+      placeholder: 例如：`devctl push` 到 /tmp/x.bin 后 md5 不一致
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 请给出可直接复制的完整命令行
+      value: |
+        1. client 启动代理：
+        2. server 执行：
+        3. 现象：
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: 接入方式
+      options: [本地串口, TCP 直连, SSH(stdio), SSH 反向隧道]
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境信息
+      value: |
+        - client OS：
+        - server OS / Python 版本：
+        - 串口设备名与波特率（如 COM3 @ 460800）：
+        - 设备系统 / shell（如 Yocto, busybox ash）：
+        - 设备上是否有 base64 / awk / od / md5sum：
+        - 代理版本（`devctl info` 的 agent= 字段）：
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与输出
+      description: 代理日志（-LogFile）、devctl 输出与**退出码**。请自行抹掉口令/IP 等敏感信息。
+      render: text
