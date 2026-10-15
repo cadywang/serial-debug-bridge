@@ -172,7 +172,15 @@ try {
   if (-not $DryRun) {
     & git -c "http.extraheader=AUTHORIZATION: basic $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($Owner):$Token")))" `
         push --quiet -u origin $BaseBranch
-    if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host '  The push was rejected. The usual cause is a repository created WITH an'
+      Write-Host '  initial commit (README / .gitignore / licence ticked in the web form).'
+      Write-Host '  Either delete and recreate it empty, which is what this project prefers,'
+      Write-Host '  or adopt the existing history first:'
+      Write-Host '      git pull --rebase origin main'
+      Write-Host '      git push -u origin main'
+      throw 'git push failed'
+    }
     & git -c "http.extraheader=AUTHORIZATION: basic $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($Owner):$Token")))" `
         push --quiet --tags
     Write-Host "    pushed $BaseBranch (+tags)"
