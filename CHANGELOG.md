@@ -24,7 +24,12 @@
 - 输出清洗：剥离 shell 提示符与 ANSI 颜色转义。
 - 设备复位：通过 DTR 复位开发板（`devctl reset`）。
 - 工程化：MIT 许可、贡献/安全/行为准则文档、Issue 与 PR 模板、
-  CI（Windows PowerShell 与跨平台 Python 两套 mock 测试）、`verify-live.sh` 真机端到端验证脚本。
+  CI（Windows PowerShell 与跨平台 Python 两套 mock 测试 + 交叉实现检查）、
+  `verify-live.sh` 真机端到端验证脚本。
+- 提交信息强制采用 **Linux 内核规范**：`subsystem: 祈使句摘要`（≤72 列）、
+  正文说明 what/why 并折行、必须带 `Signed-off-by:` DCO 签名；
+  `tools/check-commits.py` 同时作为 CI 门禁与 `tools/git-hooks/commit-msg` 本地钩子，
+  并明确拒绝 `feat:` / `fix:` 这类 conventional-commit 标签。
 
 ### 修复
 - 分块写入时排空最后一块回显，导致结束标记丢失、上传超时。
