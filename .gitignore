@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+#  serial-debug-bridge
+# ---------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# PowerShell / editors
+*.psm1.bak
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test scratch space (selftest / test_e2e write here)
+.tmp-*/
+tmp/
+
+# Runtime artefacts
+*.log
+agent.local.ps1
+agent.local.sh
+cli/config.local.json
