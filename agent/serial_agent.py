@@ -437,6 +437,13 @@ def _run_on_device_once(dev, text: str, timeout_ms: int):
                 return True, rc, out, bytes(buf)
         else:
             time.sleep(0.01)
+    # Say what the console was printing: a boot banner or a login prompt
+    # explains a timeout far better than "device did not respond".
+    tail = bytes(buf).decode('latin-1').replace('\r', '').replace('\n', ' | ')
+    if len(tail) > 220:
+        tail = tail[-220:]
+    if tail.strip():
+        log('timeout waiting for the marker; console said: %s' % tail, 'WARN')
     _recover(dev)
     return False, -1, buf.decode('utf-8', 'replace'), bytes(buf)
 
@@ -558,6 +565,11 @@ def wait_any(dev, markers, timeout_ms: int) -> str:
                         return m
         else:
             time.sleep(0.002)
+    tail = buf.decode('latin-1').replace('\r', '').replace('\n', ' | ')
+    if len(tail) > 220:
+        tail = tail[-220:]
+    if tail.strip():
+        log('marker not seen; console said: %s' % tail, 'WARN')
     return ''
 
 

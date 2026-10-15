@@ -338,6 +338,11 @@ function Invoke-OnDeviceOnce {
       Start-Sleep -Milliseconds 10
     }
   }
+  # Say what the console was actually printing: a boot banner or a login prompt
+  # explains a timeout far better than "device did not respond".
+  $tail = $sb.ToString() -replace "`r", '' -replace "`n", ' | '
+  if ($tail.Length -gt 220) { $tail = $tail.Substring($tail.Length - 220) }
+  if ($tail.Trim().Length -gt 0) { Write-Log ('timeout waiting for the marker; console said: ' + $tail) 'WARN' }
   Recover-Device
 
   return [pscustomobject]@{ Ok = $false; Rc = -1; Out = $sb.ToString(); Raw = $sb.ToString() }
@@ -400,6 +405,9 @@ function Wait-Any {
       foreach ($m in $Markers) { if ($s.Contains($m)) { return $m } }
     } else { Start-Sleep -Milliseconds 2 }
   }
+  $tail = $sb.ToString() -replace "`r", '' -replace "`n", ' | '
+  if ($tail.Length -gt 220) { $tail = $tail.Substring($tail.Length - 220) }
+  if ($tail.Trim().Length -gt 0) { Write-Log ('marker not seen; console said: ' + $tail) 'WARN' }
   return ''
 }
 
