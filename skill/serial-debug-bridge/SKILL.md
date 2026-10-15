@@ -97,6 +97,25 @@ $S exec 'command -v busybox base64 openssl awk od md5sum'
    设备自己重启了，不是桥的问题。agent 超时会把控制台最后 200 字节打进日志
    （`console said: ...`），先看那条；重新登录后再传。
 
+## 发现 bug：请提交 patch，不要只绕过去
+
+这套桥（`agent/*`、`cli/*`、`tests/*`、`skill/*`）由维护者在 GitHub 上持续修正。
+**使用中踩到 bug，除了当下绕过，还要把修复交回上游**：
+
+1. **先给最小复现**：触发命令、期望结果、实际输出（含退出码）、agent 日志（`-LogFile`）。
+   先跑一遍 `sdb-check.sh` 并把输出附上——不少「桥的 bug」其实是设备重启或端口被占。
+2. **改代码要成对改**：`agent/serial_agent.ps1` ↔ `agent/serial_agent.py`、
+   `cli/devctl.ps1` ↔ `cli/devctl.py` 必须同步（本工具支持 ps↔py 交叉使用）；涉及协议时同步 `PROTOCOL.md`。
+3. **跑自测再提**：`powershell -File tests/selftest.ps1`（含 `-Codec hex`）、
+   `python3 tests/test_e2e.py`（含 `--agent-args "--codec hex"`）；有条件再跑 `bash tests/verify-live.sh <client>:<port>`。
+4. **按仓库规范提交**：内核风格 commit（`<subsystem>: <祈使句摘要>`，正文 ≤72 列，`git commit -s` 带
+   `Signed-off-by:`），从 `main` 切分支（`agent/...`、`cli/...`、`skill/...`）后提 PR，并在 PR 里贴自测输出。
+5. **没有写权限时**：把 `git diff` 存成 `fix.patch`，连同最小复现与自测输出一起交给维护者。
+6. **确实只能绕过时**（换编码、降波特率、改端口等）：在结果里写清**绕过了什么、为什么、风险是什么**，
+   并给出建议的修复方向——别让同一个坑下次再踩。
+
+> 仓库约定：改动走 PR、CI 全绿后合并（`main` 不接受直接推送），细节见 `CONTRIBUTING.md`。
+
 ## 安全
 
 * 破坏性操作（`rm`、`dd`、写 flash、`reset`、刷固件）**必须**先与用户确认，
