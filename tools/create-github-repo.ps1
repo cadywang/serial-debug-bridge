@@ -79,6 +79,19 @@ try {
       $detail = ''
       try { $sr = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream()); $detail = $sr.ReadToEnd() } catch {}
       Write-Host "FAILED: $Method $Uri`n$detail"
+      if ($Method -eq 'POST' -and $Uri -match '/users?/repos$') {
+        Write-Host ''
+        Write-Host '  This token may not be allowed to create repositories.'
+        Write-Host '  GitHub App user tokens (ghu_..., e.g. the VS Code sign-in) carry only'
+        Write-Host '  repository read/write rights, while creating a repository additionally'
+        Write-Host '  needs the application itself to hold administration:write.'
+        Write-Host '  Pushing and branch protection DO work with such a token, so:'
+        Write-Host '    1) create the repository once at https://github.com/new and leave it'
+        Write-Host '       EMPTY (no README, no .gitignore, no licence);'
+        Write-Host '    2) re-run this script, it will detect the existing repository.'
+        Write-Host '  Or use a token that can create:  $env:GH_TOKEN = ''ghp_...'''
+        Write-Host ''
+      }
       throw
     }
   }
