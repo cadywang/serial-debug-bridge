@@ -17,3 +17,8 @@
 *.png  binary
 *.gz   binary
 *.tgz  binary
+
+# Extension-less scripts must stay LF: a CRLF shebang/`set -euo pipefail`
+# breaks them when they are executed directly.
+/skill/serial-debug-bridge/scripts/sdb  text eol=lf
+/tools/git-hooks/commit-msg             text eol=lf
