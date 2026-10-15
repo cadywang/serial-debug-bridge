@@ -1,0 +1,12 @@
+#!/bin/sh
+# Validate the commit message against the Linux kernel submission guidelines.
+# Install once with:  git config core.hooksPath tools/git-hooks
+# Bypass in an emergency with:  git commit --no-verify
+set -e
+for py in python3 python; do
+    if command -v "$py" >/dev/null 2>&1; then
+        exec "$py" "$(dirname "$0")/../tools/check-commits.py" --commit-msg-file "$1"
+    fi
+done
+echo "commit-msg hook: python3 not found; skipping style check" >&2
+exit 0
