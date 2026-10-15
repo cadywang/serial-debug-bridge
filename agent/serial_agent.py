@@ -181,18 +181,21 @@ class MockDevice:
         if t.startswith('if [') and 'md5sum' in t:
             mt = re.search(r'md5sum (\S+)', t)
             mw = re.search(r'= "([0-9a-f]{32})"', t)
-            mc = re.search(r'cat (\S+) >> (\S+); then echo (\S+)', t)
-            me = re.search(r'else echo (\S+)', t)
-            if mt and mw and mc and me:
+            mc = re.search(r'cat (\S+) >> (\S+)', t)
+            ms = re.search(r'wc -c < (\S+)\)" = "(\d+)"', t)
+            mi = re.search(r"__DEVCTL_A''CK_(\d+)__", t)
+            mb = re.search(r"__DEVCTL_BA''D_(\d+)__", t)
+            if mt and mw and mc and mi and mb:
                 tmp = self._path(mt.group(1)); want = mw.group(1)
                 tgt = self._path(mc.group(2))
-                ack = mc.group(3).replace("''", ''); bad = me.group(1).replace("''", '')
-                got = hashlib.md5(self.files.get(tmp, b'')).hexdigest()
-                if got == want:
+                ack = '__DEVCTL_ACK_%s__' % mi.group(1)
+                bad = '__DEVCTL_BAD_%s__' % mb.group(1)
+                ok = hashlib.md5(self.files.get(tmp, b'')).hexdigest() == want
+                if ok:
                     self.files[tgt] = self.files.get(tgt, b'') + self.files.get(tmp, b'')
-                    self._emit(ack + '\r\n')
-                else:
-                    self._emit(bad + '\r\n')
+                    if ms:
+                        ok = len(self.files[tgt]) == int(ms.group(2))
+                self._emit((ack if ok else bad) + '\r\n')
                 self.last_rc = 0
                 return
         m = re.match(r'^od\s+-v\s+-b\s+(\S+)$', t)
@@ -330,6 +333,21 @@ def _strip_trailing_prompt(s: str) -> str:
         lines.pop()
     return '\n'.join(lines)
 
+def run_on_device(dev, text: str, timeout_ms: int):
+    """_run_on_device_once, retried when the echo proves the send was corrupted.
+
+    Running the corrupted command would be worse than retrying it: "uname -a"
+    silently became "uname" during one observed transfer.
+    """
+    last = None
+    for attempt in range(3):
+        last = _run_on_device_once(dev, text, timeout_ms)
+        if not last[0] or _LAST_ECHO_OK:
+            return last
+        log('device echo mismatch on attempt %d; resending' % (attempt + 1), 'WARN')
+        time.sleep(0.15)
+    return last
+
 def _clean_output(pre: bytes, text: str, probe: str) -> str:
     """Strip the terminal echo from the raw device response."""
     s = pre.decode('latin-1')
@@ -356,8 +374,36 @@ def _clean_output(pre: bytes, text: str, probe: str) -> str:
     return s.encode('latin-1').decode('utf-8', 'replace')
 
 
-def run_on_device(dev, text: str, timeout_ms: int):
-    """Send <text> plus an echo-probe line and read until the marker comes back.
+_LAST_ECHO_OK = True
+
+
+def _echo_ok(pre: bytes, text: str, probe: str) -> bool:
+    """Use the terminal echo as a free integrity check on the send direction.
+
+    The UART can drop bytes while we transmit, which would turn "uname -a"
+    into "uname" and run a different command than the caller asked for. When
+    echo is enabled every line we sent must appear, in order, before the
+    marker; when echo is disabled the check is inconclusive and we accept.
+    """
+    if not text:
+        return True
+    s = pre.decode('latin-1')
+    if probe not in s:
+        return True
+    pos = 0
+    for ln in text.split('\n'):
+        ln = ln.rstrip('\r')
+        if len(ln) < 2:
+            continue
+        k = s.find(ln, pos)
+        if k < 0:
+            return False
+        pos = k + len(ln)
+    return True
+
+
+def _run_on_device_once(dev, text: str, timeout_ms: int):
+    """One attempt: send <text> plus an echo-probe and read until the marker.
 
     Returns (ok, rc, output_text, raw_bytes).
     """
@@ -383,8 +429,11 @@ def run_on_device(dev, text: str, timeout_ms: int):
                 buf += chunk
             m = rx.search(bytes(buf))
             if m:
+                global _LAST_ECHO_OK
                 rc = int(m.group(1))
-                out = _clean_output(bytes(buf)[:m.start()], text, probe)
+                raw_pre = bytes(buf)[:m.start()]
+                _LAST_ECHO_OK = _echo_ok(raw_pre, text, probe)
+                out = _clean_output(raw_pre, text, probe)
                 return True, rc, out, bytes(buf)
         else:
             time.sleep(0.01)
@@ -531,9 +580,10 @@ def push_hex(dev, q: str, data: bytes, timeout_ms: int) -> bool:
         delim = '__DEVCTL_HEOF_%d__' % i
         body = ('awk %s > %s << %s\n%s\n%s\n' % (shquote(_AWK_HEX), _BLK, shquote(delim),
                 '\n'.join(lines), delim))
-        body += ('if [ "$(md5sum %s | cut -d" " -f1)" = "%s" ] && cat %s >> %s; then '
+        body += ('if [ "$(md5sum %s | cut -d" " -f1)" = "%s" ] && cat %s >> %s'
+                 ' && [ "$(wc -c < %s | tr -d " ")" = "%d" ]; then '
                  "echo __DEVCTL_A''CK_%d__; else echo __DEVCTL_BA''D_%d__; fi"
-                 % (_BLK, want, _BLK, q, i, i))
+                 % (_BLK, want, _BLK, q, q, min((i + 1) * BLOCK_SIZE, len(data)), i, i))
         body += '\n'
         ok = False
         for _ in range(MAX_RETRY):
@@ -542,6 +592,10 @@ def push_hex(dev, q: str, data: bytes, timeout_ms: int) -> bool:
             if hit == '__DEVCTL_ACK_%d__' % i:
                 ok = True
                 break
+            # A corrupted block can leave the shell inside a here-document or an
+            # unclosed quote, so every later retry would time out as well.
+            log('block %d not acknowledged (%s); recovering and retrying' % (i, hit or 'timeout'), 'WARN')
+            _recover(dev)
         if not ok:
             log('push block %d failed after %d tries' % (i, MAX_RETRY), 'WARN')
             return False

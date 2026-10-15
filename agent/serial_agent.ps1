@@ -248,7 +248,19 @@ function Remove-TrailingPrompt {
   if ($lines.Count -gt 0 -and $script:PromptRe.IsMatch($lines[$lines.Count - 1].Trim())) { $lines.RemoveAt($lines.Count - 1) }
   return ($lines.ToArray() -join "`n")
 }
-function Invoke-OnDevice {
+# Send Ctrl-C and drain, so a shell left inside a here-document or an
+# unclosed quote by a corrupted command returns to a prompt.
+function Recover-Device {
+  if ($Mock) { return }
+  try {
+    Device-Write ([byte[]]@(3, 10))
+    Start-Sleep -Milliseconds 200
+    $av = $script:Serial.BytesToRead
+    if ($av -gt 0) { $buf = New-Object byte[] $av; [void]$script:Serial.Read($buf, 0, $av) }
+  } catch { }
+}
+
+function Invoke-OnDeviceOnce {
   param([string]$Text, [int]$TimeoutMs = $DefaultTimeoutMs)
 
   $tok   = New-Token
@@ -277,6 +289,7 @@ function Invoke-OnDevice {
       if ($m.Success) {
         $rc = [int]$m.Groups[1].Value
         $pre = $s.Substring(0, $m.Index)
+        $rawPre = $pre
 
         # Strip the terminal echo. A console echoes the bytes we typed, in the
         # same order they arrived, but interleaving of "echo" and "program
@@ -289,6 +302,19 @@ function Invoke-OnDevice {
           foreach ($ln in ($Text -split "`n")) {
             $c = $ln.TrimEnd("`r")
             if ($c.Length -ge 2) { $cmdLines += $c }
+          }
+        }
+        # The UART can drop bytes in the send direction as well, which would
+        # turn "uname -a" into "uname" and run a different command than asked.
+        # The terminal echo is a free integrity check: when echo is on, every
+        # line we sent must appear, in order, before the marker.
+        $echoOk = $true
+        if ($cmdLines.Count -gt 0 -and $rawPre.IndexOf($probe) -ge 0) {
+          $pos = 0
+          foreach ($ln in $cmdLines) {
+            $k = $rawPre.IndexOf($ln, $pos)
+            if ($k -lt 0) { $echoOk = $false; break }
+            $pos = $k + $ln.Length
           }
         }
         if ($cmdLines.Count -gt 0) {
@@ -306,20 +332,14 @@ function Invoke-OnDevice {
         $pre = $pre -replace '^[\r\n]+', ''
         while ($pre.EndsWith("`r") -or $pre.EndsWith("`n")) { $pre = $pre.Substring(0, $pre.Length - 1) }
         $text = $script:Utf8.GetString($script:Latin1.GetBytes($pre))
-        return [pscustomobject]@{ Ok = $true; Rc = $rc; Out = $text; Raw = $s }
+        return [pscustomobject]@{ Ok = $true; Rc = $rc; Out = $text; Raw = $s; EchoOk = $echoOk }
       }
     } else {
       Start-Sleep -Milliseconds 10
     }
   }
-  if (-not $Mock) {
-    try {
-      Device-Write ([byte[]]@(3, 10))
-      Start-Sleep -Milliseconds 200
-      $av = $script:Serial.BytesToRead
-      if ($av -gt 0) { $buf = New-Object byte[] $av; [void]$script:Serial.Read($buf, 0, $av) }
-    } catch { }
-  }
+  Recover-Device
+
   return [pscustomobject]@{ Ok = $false; Rc = -1; Out = $sb.ToString(); Raw = $sb.ToString() }
 }
 # =====================================================================
@@ -400,6 +420,11 @@ function Invoke-PushHex {
     $n = [Math]::Min($blk, $Data.Length - $off)
     $chunk = New-Object byte[] $n
     [Array]::Copy($Data, $off, $chunk, 0, $n)
+    # After appending, the target must have grown by exactly the bytes sent so
+    # far. A corrupted destination path makes cat succeed against some other
+    # writable file, so without this check that block is lost while we still
+    # see an ACK.
+    $expectSize = $off + $n
     $want = Get-Md5Hex $chunk
     $hex = ConvertTo-Hex $chunk
     $lines = New-Object System.Collections.Generic.List[string]
@@ -407,12 +432,18 @@ function Invoke-PushHex {
     $delim = '__DEVCTL_HEOF_' + $i + '__'
     $body = 'awk ' + (Quote-Sh $awk) + ' > ' + $tmp + ' << ' + (Quote-Sh $delim) + "`n" +
             ($lines -join "`n") + "`n" + $delim + "`n" +
-            'if [ "$(md5sum ' + $tmp + ' | cut -d" " -f1)" = "' + $want + '" ] && cat ' + $tmp + ' >> ' + $Q + '; then echo __DEVCTL_A''''CK_' + $i + '__; else echo __DEVCTL_BA''''D_' + $i + '__; fi'
+            'if [ "$(md5sum ' + $tmp + ' | cut -d" " -f1)" = "' + $want + '" ] && cat ' + $tmp + ' >> ' + $Q + ' && [ "$(wc -c < ' + $Q + ' | tr -d " ")" = "' + $expectSize + '" ]; then echo __DEVCTL_A''''CK_' + $i + '__; else echo __DEVCTL_BA''''D_' + $i + '__; fi'
+
     $done = $false
     for ($try = 1; $try -le 8; $try++) {
       Device-Write ($script:Utf8.GetBytes($body + "`n")) -NoFlow
       $hit = Wait-Any @(('__DEVCTL_ACK_' + $i + '__'), ('__DEVCTL_BAD_' + $i + '__')) $to
       if ($hit -eq ('__DEVCTL_ACK_' + $i + '__')) { $done = $true; break }
+      # A corrupted block can leave the shell inside a here-document or an
+      # unclosed quote, which makes every later retry time out too. Reset the
+      # line first, then send the block again.
+      Write-Log ('block ' + $i + ' not acknowledged ($hit); recovering and retrying') 'WARN'
+      Recover-Device
     }
     if (-not $done) { Write-Log ("hex push block $i failed after retries") 'WARN'; return $false }
     $off += $n
@@ -543,6 +574,24 @@ function ConvertFrom-OdOctal {
     }
   }
   return ,$out.ToArray()
+}
+# Resend when the echo shows the device did not receive the text we sent.
+# Running the corrupted command would be worse than retrying it: "uname -a"
+# silently became "uname" during one observed transfer.
+function Invoke-OnDevice {
+  param([string]$Text, [int]$TimeoutMs = $DefaultTimeoutMs)
+  $last = $null
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $last = Invoke-OnDeviceOnce -Text $Text -TimeoutMs $TimeoutMs
+    if (-not $last.Ok) { return $last }
+    if ($null -ne $last.PSObject.Properties['EchoOk'] -and -not $last.EchoOk) {
+      Write-Log ('device echo mismatch on attempt ' + $attempt + '; resending') 'WARN'
+      Start-Sleep -Milliseconds 150
+      continue
+    }
+    return $last
+  }
+  return $last
 }
 function Invoke-Request {
   param(
@@ -801,17 +850,23 @@ function Mock-Exec {
   }
   if ($t.StartsWith('if [') -and $t.Contains('md5sum')) {
     $mt = [regex]::Match($t, 'md5sum (\S+)'); $mw = [regex]::Match($t, '= "([0-9a-f]{32})"')
-    $mc = [regex]::Match($t, 'cat (\S+) >> (\S+); then echo (\S+)'); $me = [regex]::Match($t, 'else echo (\S+)')
-    if ($mt.Success -and $mw.Success -and $mc.Success -and $me.Success) {
+    $mc = [regex]::Match($t, 'cat (\S+) >> (\S+)')
+    $ms = [regex]::Match($t, 'wc -c < (\S+)\)" = "(\d+)"')
+    $mi = [regex]::Match($t, "__DEVCTL_A''CK_(\d+)__")
+    $mb = [regex]::Match($t, "__DEVCTL_BA''D_(\d+)__")
+    if ($mt.Success -and $mw.Success -and $mc.Success -and $mi.Success -and $mb.Success) {
       $tmp = Mock-Path $mt.Groups[1].Value; $want = $mw.Groups[1].Value
       $tgt = Mock-Path $mc.Groups[2].Value
-      $ack = $mc.Groups[3].Value -replace "''", ''; $bad = $me.Groups[1].Value -replace "''", ''
+      $ack = '__DEVCTL_ACK_' + $mi.Groups[1].Value + '__'
+      $bad = '__DEVCTL_BAD_' + $mb.Groups[1].Value + '__'
       $cur = if ($script:MockFiles.ContainsKey($tmp)) { $script:MockFiles[$tmp] } else { [byte[]]@() }
-      if ((Get-Md5Hex $cur) -eq $want) {
+      $ok = ((Get-Md5Hex $cur) -eq $want)
+      if ($ok) {
         $prev = if ($script:MockFiles.ContainsKey($tgt)) { $script:MockFiles[$tgt] } else { [byte[]]@() }
         $script:MockFiles[$tgt] = $prev + $cur
-        Mock-Emit ($ack + "`r`n")
-      } else { Mock-Emit ($bad + "`r`n") }
+        if ($ms.Success) { $ok = ($script:MockFiles[$tgt].Length -eq [int]$ms.Groups[2].Value) }
+      }
+      if ($ok) { Mock-Emit ($ack + "`r`n") } else { Mock-Emit ($bad + "`r`n") }
       $script:MockLastRc = 0; return
     }
   }
