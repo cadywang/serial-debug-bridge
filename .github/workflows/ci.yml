@@ -19,7 +19,11 @@ jobs:
     name: Hygiene (encoding, line endings, syntax)
     runs-on: ubuntu-latest
     steps:
+      # The commit style gate walks the pull request range, so it needs real
+      # history; the default depth 1 clone cannot resolve base..head.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Reject UTF-8 BOM
         run: |

@@ -55,25 +55,36 @@ SEP = '\x1f'   # field separator
 RS = '\x1e'    # record separator (a commit message body contains newlines)
 
 
-def run(*args: str) -> str:
+def run(*args: str, required: bool = True):
+    """Run git. Returns None instead of exiting when required=False."""
     try:
         return subprocess.run(args, check=True, capture_output=True, text=True,
                               encoding='utf-8', errors='replace').stdout
     except subprocess.CalledProcessError as exc:
-        sys.stderr.write('check-commits: %s failed: %s\n'
-                         % (' '.join(args), (exc.stderr or '').strip()))
-        sys.exit(2)
+        if required:
+            sys.stderr.write('check-commits: %s failed: %s\n'
+                             % (' '.join(args), (exc.stderr or '').strip()))
+            sys.exit(2)
+        return None
 
 
 def commits(rng: str | None, all_: bool) -> list:
     fmt = SEP.join(['%H', '%h', '%an', '%ae', '%s', '%b']) + RS
+    head_only = ['git', 'log', '--pretty=format:' + fmt, '-n', '1']
+
     if all_:
-        args = ['git', 'log', '--pretty=format:' + fmt, '--reverse']
+        out = run('git', 'log', '--pretty=format:' + fmt, '--reverse')
     elif rng:
-        args = ['git', 'log', '--pretty=format:' + fmt, '--reverse', rng]
+        # A shallow clone (actions/checkout defaults to depth 1) cannot resolve
+        # base..head, and failing the build for that would be wrong - the patch
+        # is simply not present. Say so and check what we do have.
+        out = run('git', 'log', '--pretty=format:' + fmt, '--reverse', rng, required=False)
+        if out is None:
+            sys.stderr.write('check-commits: range %s is not available here '
+                             '(shallow clone?); falling back to HEAD\n' % rng)
+            out = run(*head_only)
     else:
-        args = ['git', 'log', '--pretty=format:' + fmt, '-n', '1']
-    out = run(*args)
+        out = run(*head_only)
     res = []
     for rec in out.split(RS):
         if not rec.strip():
