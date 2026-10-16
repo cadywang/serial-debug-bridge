@@ -54,7 +54,7 @@
 ### 验证
 - 本地 mock 自测：`serial_agent.ps1` + `devctl.ps1` **9/9**；`serial_agent.py` + `devctl.py` **8/8**
   （`auto` 与 `hex` 两种编码均通过）；跨版本组合（ps↔py）亦通过。
-- 真机验证：client=Windows（COM3 @ 460800），设备=Realtek RTD1761 / Yocto（busybox ash，
+- 真机验证：client=Windows（COM3 @ 460800），设备=Yocto 机顶盒（busybox ash，
   **无 base64**），经 SSH 反向隧道由 server 操作；`info` / `exec` / `pull` 正常，
   **4 KB、60 KB、200 KB** 二进制文件 push+pull 往返 md5 全部一致。
 
