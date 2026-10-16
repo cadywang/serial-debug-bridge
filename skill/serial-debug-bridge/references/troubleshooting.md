@@ -126,7 +126,7 @@ agent 在超时时会把控制台最后约 200 字节写进日志（`-LogFile`�
 
    # ② server 侧：先发一个空行清掉残留输入，再发 root
    printf '\nroot\n' | nc 127.0.0.1 17801
-   # 期望：rose-rtd1761 login: root   然后   root@rose-rtd1761:~#
+   # 期望：myboard login: root   然后   root@myboard:~#
    ```
 
 3. 登录成功后：停掉 raw agent，重新以**协议模式**启动 agent，`info` / `exec` / `push` 全部恢复。

@@ -338,7 +338,7 @@ python3 cli/devctl.py --tcp 172.21.5.10:7801 pull /tmp/log.tgz ./log.tgz
 
 1. **编码自适应。** agent 首次传输前会探测设备可用的编解码方式，优先级为：
    `base64` → `busybox base64` → `openssl base64` → **hex+awk**。
-   大多数设备有 `base64`；**本次实测的 Yocto 设备（rose-rtd1761）没有任何 base64**，
+   大多数设备有 `base64`；**本次实测的 Yocto 设备（精简镜像）没有任何 base64**，
    于是自动落到 hex+awk —— 用设备上的 `awk` 把十六进制文本还原成字节，
    下载时用 busybox 的 `od -v -b` 把字节读成八进制文本。可用 `-Codec` / `--codec` 强制指定。
 
@@ -355,7 +355,7 @@ python3 cli/devctl.py --tcp 172.21.5.10:7801 pull /tmp/log.tgz ./log.tgz
 3. **下载（pull）** 走的是另一条路：agent 在设备上执行 `od -v -b <文件>`，
    把设备上的字节读回 server，devctl 落盘后再比一次 md5。
 
-> **实测结论**（client=Windows，COM3@460800，设备=Realtek RTD1761 / Yocto，经反向 SSH 隧道从 server 操作）：
+> **实测结论**（client=Windows，COM3@460800，设备=Yocto 机顶盒，经反向 SSH 隧道从 server 操作）：
 > `info` / `exec`（含提示符与 ANSI 颜色清理）/ `pull` 均正常；
 > **4KB、60KB、200KB 二进制文件的 push 与 pull 往返 md5 完全一致**。
 > 速度约 **1~1.2 KB/s**（受逐块校验与串口重发限制）。大文件建议先
