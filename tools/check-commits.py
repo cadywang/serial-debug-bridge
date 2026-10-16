@@ -14,6 +14,12 @@ Rules checked (see Documentation/process/submitting-patches.rst in the kernel):
      author identity.
   6. Known bug-fix tags must be well formed ("Fixes: <sha> (\"title\")").
 
+Squash merges made through the GitHub web UI are accepted as well: GitHub
+rewrites the author to "<id>+<login>@users.noreply.github.com" (the same account
+as the "<login>@users.noreply.github.com" that "git commit -s" writes), appends
+a "Co-authored-by:" trailer, and may interleave body text between trailer
+blocks.
+
 Usage:
     tools/check-commits.py                     # check HEAD
     tools/check-commits.py --range main~5..main
@@ -38,6 +44,10 @@ import sys
 
 SCOPE_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._/+-]*(\s*\[[^]]+\])?:\s+\S')
 TRAILER_RE = re.compile(r'^([A-Z][A-Za-z-]*): (\S.*)$')
+# GitHub rewrites the author to "<id>+<login>@users.noreply.github.com" when a
+# pull request is squash-merged from the web UI, while "git commit -s" writes
+# "<login>@users.noreply.github.com": both name the same account.
+NOREPLY_RE = re.compile(r'^(?:(\d+)\+)?([^@+]+)@users\.noreply\.github\.com$', re.I)
 FIXES_RE = re.compile(r'^Fixes: ([0-9a-f]{7,40}) \(.*\)\s*$')
 # Only the purely "type" keywords are rejected. docs:/ci:/net:/arm: and friends
 # are ordinary subsystem prefixes in kernel style, so they stay allowed.
@@ -53,8 +63,9 @@ BAD_FIRST_WORDS = {
     'refactored', 'reverted', 'bump', 'bumped', 'initial', 'wip', 'misc', 'various',
 }
 ALLOWED_TRAILERS = {
-    'Signed-off-by', 'Reported-by', 'Co-developed-by', 'Reviewed-by', 'Acked-by',
-    'Tested-by', 'Suggested-by', 'Cc', 'Link', 'Fixes', 'To', 'From',
+    'Signed-off-by', 'Reported-by', 'Co-developed-by', 'Co-authored-by',
+    'Reviewed-by', 'Acked-by', 'Tested-by', 'Suggested-by', 'Cc', 'Link',
+    'Fixes', 'To', 'From',
 }
 SEP = '\x1f'   # field separator
 RS = '\x1e'    # record separator (a commit message body contains newlines)
@@ -147,41 +158,65 @@ def check_one(c: dict, args) -> list:
     if lines and lines[0].strip() == subj.strip():
         errs.append('body must not repeat the subject')
 
-    # 4: wrapping
-    in_trailer = False
+    # 4: wrapping, trailer syntax, and the layout around the trailer block
+    trailers = [i for i, line in enumerate(lines) if TRAILER_RE.match(line.strip())]
     for i, line in enumerate(lines):
         if not line.strip():
             continue
         m = TRAILER_RE.match(line.strip())
         if m:
-            in_trailer = True
             if m.group(1) not in ALLOWED_TRAILERS:
                 errs.append('unknown trailer "%s:" (line %d)' % (m.group(1), i + 1))
             if m.group(1) == 'Fixes' and not FIXES_RE.match(line.strip()):
                 errs.append('malformed Fixes: tag, expected '
                             'Fixes: <sha> ("commit title")')
             continue
-        if in_trailer and not line.startswith(' '):
-            errs.append('non-trailer text after trailer block (line %d)' % (i + 1))
         if len(line) > args.body_max and not _long_ok(line):
             errs.append('body line %d is %d chars (max %d); wrap it'
                         % (i + 1, len(line), args.body_max))
 
-    # blank line before the trailer block
-    if in_trailer:
-        idx = next(j for j, l in enumerate(lines) if TRAILER_RE.match(l.strip()))
-        if idx > 0 and lines[idx - 1].strip():
+    # A squash merge interleaves body text between trailer blocks, so treat the
+    # *last* run of trailer lines as the trailer block: only prose after it (and
+    # a missing blank line before it) is a layout error.
+    if trailers:
+        start = trailers[-1]
+        while start - 1 >= 0 and TRAILER_RE.match(lines[start - 1].strip()):
+            start -= 1
+        for i in range(trailers[-1] + 1, len(lines)):
+            if lines[i].strip() and not lines[i].startswith(' '):
+                errs.append('non-trailer text after trailer block (line %d)' % (i + 1))
+        if start > 0 and lines[start - 1].strip():
             errs.append('a blank line is required before the trailer block')
 
     # 5: DCO
     sigs = re.findall(r'^Signed-off-by:\s*(.+)$', body, re.M)
     if not sigs:
         errs.append('missing "Signed-off-by:" (DCO); use "git commit -s"')
-    else:
+    elif not any(_same_identity(c['name'], c['email'], s) for s in sigs):
         want = '%s <%s>' % (c['name'], c['email'])
-        if not any(s.strip().lower() == want.lower() for s in sigs):
-            errs.append('Signed-off-by must match the author: %s' % want)
+        errs.append('Signed-off-by must match the author: %s' % want)
     return errs
+
+
+def _same_identity(name: str, email: str, sob: str) -> bool:
+    """True when a "Signed-off-by:" line names the commit author.
+
+    The GitHub web UI re-authors a squash-merged commit as
+    "<id>+<login>@users.noreply.github.com", while "git commit -s" writes
+    "<login>@users.noreply.github.com". Both identify the same account, so
+    accept either form when the display name matches; anything else must match
+    the author address literally.
+    """
+    m = re.match(r'^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$', sob.strip())
+    if not m:
+        return False
+    sob_name, sob_email = m.group(1).strip(), m.group(2).strip()
+    if sob_name.lower() != name.strip().lower():
+        return False
+    if sob_email.lower() == email.strip().lower():
+        return True
+    sig, author = NOREPLY_RE.match(sob_email), NOREPLY_RE.match(email)
+    return bool(sig and author and sig.group(2).lower() == author.group(2).lower())
 
 
 def _long_ok(line: str) -> bool:

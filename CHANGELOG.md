@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+### 修复
+- CI 的提交规范门禁误拒 GitHub 网页端 squash 合并产生的提交：作者被改写成
+  `<ID>+<login>@users.noreply.github.com`、自动追加 `Co-authored-by:`，正文还可能夹在
+  trailer 块之间（`main` 上 #4 / #5 合并后的构建就是这么红的）。现在 GitHub noreply
+  的两种写法视为同一账号、`Co-authored-by:` 进入白名单，且只检查**最后一个** trailer
+  块之后的正文；新增 `tests/test_check_commits.py`（15 例）并由 hygiene job 执行。
+
 ## [1.0.0] - 2026-10-15
 
 ### 新增
