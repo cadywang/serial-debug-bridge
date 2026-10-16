@@ -63,6 +63,9 @@ jobs:
           done
           echo "yaml sanity OK"
 
+      - name: Commit style self-test
+        run: python3 tests/test_check_commits.py
+
       - name: Commit style (Linux kernel guidelines + DCO)
         shell: bash
         run: |

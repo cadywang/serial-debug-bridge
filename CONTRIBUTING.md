@@ -66,6 +66,8 @@ Signed-off-by: <作者姓名> <作者邮箱>
 ### 3.2 DCO 签名（必须）
 
 每个提交都要有 `Signed-off-by:`，且与作者身份一致（Developer Certificate of Origin）。
+网页端 squash 合并会把作者改写成 `<ID>+<login>@users.noreply.github.com`，它与
+`git commit -s` 写的 `<login>@users.noreply.github.com` 视为同一账号，不必改 git 邮箱。
 首次克隆仓库后跑一次环境配置即可自动签名、自动本地校验：
 
 ```bash
@@ -131,7 +133,7 @@ git config core.hooksPath tools/git-hooks
 1. git rebase main 确认无冲突且历史线性，git push -u origin <branch>，然后开 PR（使用仓库模板填写）。
 2. CI 全绿（含 `Commit style` 检查）；本地自测命令与输出贴在 PR 里。
 3. required status checks 未通过不可合入；单人维护模式下不设强制批准数（GitHub 不允许自批），由维护者审阅后合并——加了协作者后按 [REVIEW_POLICY.md](REVIEW_POLICY.md) 提升为「至少 1 位他人批准」。
-4. 由 maintainer 合入 `main`：**Squash merge**（线性历史，分支自动删除）。PR 标题沿用内核风格 `<subsystem>: <祈使句摘要>`；注意 squash 提交的作者是 GitHub 账号，正文里的 `Signed-off-by:` 要与该账号邮箱一致。
+4. 由 maintainer 合入 `main`：**Squash merge**（线性历史，分支自动删除）。PR 标题沿用内核风格 `<subsystem>: <祈使句摘要>`；squash 提交的作者是 GitHub 账号（`<ID>+<login>@users.noreply.github.com`），正文里 `git commit -s` 写的 `Signed-off-by:` 依旧算数——检查器按账号判定，两种 noreply 写法都接受，网页端点合并即可。
 5. 发布：打 tag `vX.Y.Z`，同步更新 `CHANGELOG.md`。
 6. 补丁必须保持同步：`agent/serial_agent.ps1` ↔ `agent/serial_agent.py`、`cli/devctl.ps1` ↔ `cli/devctl.py`，以及 `PROTOCOL.md` / `README.md` / `CHANGELOG.md` / `skill/` 随行为变化一起改，清单见 [REVIEW_POLICY.md](REVIEW_POLICY.md)。
 
