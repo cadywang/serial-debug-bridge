@@ -7,7 +7,8 @@
       "PowerShell agent + CLI (mock)",
       "Python agent + CLI (mock) (ubuntu-latest)",
       "Python agent + CLI (mock) (windows-latest)",
-      "Cross implementation check"
+      "Cross implementation check",
+      "PR gate (title + merge checklist)"
     ]
   },
   "required_pull_request_reviews": {
