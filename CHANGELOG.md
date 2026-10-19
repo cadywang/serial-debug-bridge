@@ -41,12 +41,21 @@
   也不再是原文——#7 就是这么把 `main` 判红的，而 `main` 的历史改不回来。rebase 让 PR 里
   的原始提交原样落到 `main`，代价是提交信息必须一开始就写对；`pr-gate` 仍在合并前校验
   PR 标题与模板清单。
+- 本地自测不再卡死：`tests/selftest.ps1` 曾默认用 17801，而这个端口在本机常已被 VS Code 的
+  端口转发占着（Windows 上更具体的 `127.0.0.1` 监听会盖过 agent 的 `0.0.0.0`），devctl 于是
+  连到了陌生人身上并永远等回复。现在两套自测**默认向系统要一个空闲端口**
+  （`-Port` / `--port` 仍可指定），指定的端口已被占用时立刻报错退出（退出码 2）。
+- `cli/devctl.ps1` 的连接没有超时（`devctl.py` 一直是 15 秒），端口不通时脚本会一直挂着。
+  现在两版一致：连不上或超时在 15 秒内报错退出（退出码 1），错误信息也去掉了 .NET 包装。
 
 ### 验证
 - 本地 mock 自测（Windows）：`serial_agent.ps1` + `devctl.ps1` **12/12**（`auto` 与 `hex`
   两种编码），`serial_agent.py` + `devctl.py` **11/11**；交叉组合
   （`devctl.py → serial_agent.ps1`、`devctl.ps1 → serial_agent.py`）的 `shutdown` 亦通过，
   之后 agent 进程退出、TCP 端口重新可绑定。
+- 失败路径复查（本机 Windows）：`selftest.ps1` 默认端口 12/12、指定端口 + `-Codec hex` 12/12；
+  `test_e2e.py` 默认端口 11/11、`--codec hex` 11/11；对已占用端口两者都**秒退并返回 2**；
+  `devctl.ps1` 对不通的端口立即报错退出 1，对黑洞地址 15 秒超时退出 1，mock agent 正常。
 
 ## [1.0.0] - 2026-10-15
 
