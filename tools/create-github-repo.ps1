@@ -183,10 +183,10 @@ try {
   # ---- 2. push ----
   Write-Host "==> push"
   $remoteUrl = "https://github.com/$Owner/$Repo.git"
-  $has = (& git remote get-url origin 2>$null)
-  if ($LASTEXITCODE -ne 0) { & git remote add origin $remoteUrl } else { & git remote set-url origin $remoteUrl }
-  & git branch -M $BaseBranch
   if (-not $DryRun) {
+    $has = (& git remote get-url origin 2>$null)
+    if ($LASTEXITCODE -ne 0) { & git remote add origin $remoteUrl } else { & git remote set-url origin $remoteUrl }
+    & git branch -M $BaseBranch
     & git -c "http.extraheader=AUTHORIZATION: basic $([Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($Owner):$Token")))" `
         push --quiet -u origin $BaseBranch
     if ($LASTEXITCODE -ne 0) {
