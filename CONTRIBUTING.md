@@ -131,7 +131,10 @@ git config core.hooksPath tools/git-hooks
 ## 6. PR 流程
 
 1. git rebase main 确认无冲突且历史线性，git push -u origin <branch>，然后开 PR（使用仓库模板填写）。
-2. CI 全绿（含 `Commit style` 检查）；本地自测命令与输出贴在 PR 里。
+   **PR 标题**沿用内核规范 `<subsystem>: <祈使句摘要>`，模板里的「合并前清单」**逐条勾选**
+   （CI 的 `PR gate (title + merge checklist)` 会强制校验：标题写错的代价是网页端 squash
+   把它写成 `main` 上的提交标题，事后才发现就改不回来了）。
+2. CI 全绿（含 `Commit style` 与 `PR gate`）；本地自测命令与输出贴在 PR 里。
 3. required status checks 未通过不可合入；单人维护模式下不设强制批准数（GitHub 不允许自批），由维护者审阅后合并——加了协作者后按 [REVIEW_POLICY.md](REVIEW_POLICY.md) 提升为「至少 1 位他人批准」。
 4. 由 maintainer 合入 `main`：**Squash merge**（线性历史，分支自动删除）。PR 标题沿用内核风格 `<subsystem>: <祈使句摘要>`；squash 提交的作者是 GitHub 账号（`<ID>+<login>@users.noreply.github.com`），正文里 `git commit -s` 写的 `Signed-off-by:` 依旧算数——检查器按账号判定，两种 noreply 写法都接受，网页端点合并即可。
 5. 发布：打 tag `vX.Y.Z`，同步更新 `CHANGELOG.md`。
