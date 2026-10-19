@@ -525,7 +525,7 @@ python3 tests/test_e2e.py --target 127.0.0.1:7801
 | 规则 | 值 |
 | --- | --- |
 | 直推 `main` | ❌ 禁止（`enforce_admins: true`，管理员也一样） |
-| 合并方式 | ✅ 仅 Squash merge，线性历史 |
+| 合并方式 | ✅ 仅 **Rebase and merge**（PR 里每个提交原样落到 `main`，含 `Signed-off-by`），线性历史 |
 | 必需审查 | ✅ 必须走 PR + CI 全绿；单人维护模式下由维护者审阅后合并（`required_approving_review_count: 0`，原因见 [REVIEW_POLICY.md](REVIEW_POLICY.md)） |
 | 过期审查 | 有新提交后自动作废（`dismiss_stale_reviews`） |
 | 最近推送审批 | ⚙️ 单人模式下关闭（`require_last_push_approval: false`）；有第二位维护者时开启 |
@@ -544,9 +544,9 @@ CI 必需检查（`governance/branch-protection.json` 中的 contexts）：
 6. `PR gate (title + merge checklist)`
 
 前五个在 `.github/workflows/ci.yml`，第六个在 `.github/workflows/pr-gate.yml`：
-`pr-gate` 校验 **PR 标题符合内核规范**（网页端 squash 合并会把标题写成提交标题）与
-**模板里「合并前清单」是否逐条勾选**，编辑 PR 描述后会重跑。改门禁或改清单都要走 PR，
-清单条目在 `.github/pull_request_template.md`。
+`pr-gate` 校验 **PR 标题符合内核规范**（标题是检索与变更日志的入口，而且一旦有人改回
+squash 合并，它就会变成 `main` 上的提交标题）与 **模板里「合并前清单」是否逐条勾选**，
+编辑 PR 描述后会重跑。改门禁或改清单都要走 PR，清单条目在 `.github/pull_request_template.md`。
 
 相关约定：
 

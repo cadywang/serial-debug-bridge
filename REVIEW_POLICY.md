@@ -10,7 +10,7 @@
 
 | 闸门 | 位置 | 拦什么 | 能不能绕过 |
 | --- | --- | --- | --- |
-| ① 分支保护 | `governance/branch-protection.json`（由 `tools/create-github-repo.ps1` 施加） | 直推 `main`、强推、删分支、检查没绿就合并 | 不能：`enforce_admins: true` + 空 bypass，管理员也一样 |
+| ① 分支保护 | `governance/branch-protection.json` + `governance/repository-settings.json`（由 `tools/create-github-repo.ps1` 施加） | 直推 `main`、强推、删分支、检查没绿就合并、**用 Squash 把 PR 压成一个提交**（只允许 `Rebase and merge`） | 不能：`enforce_admins: true` + 空 bypass，管理员也一样 |
 | ② 自动校验 | `.github/workflows/ci.yml` + `.github/workflows/pr-gate.yml` | BOM/CRLF、语法、两套实现自测、交叉验证、commit 规范 + DCO、**PR 标题与「合并前清单」** | 不能：改 CI 自己也要走同一个 PR 流程 |
 | ③ 人工审查 | PR 本身 | 维护者看过 diff、复现步骤、自测输出后才合并 | 单人维护时维护者即作者（GitHub 不允许自批，因此不设强制批准数）；有协作者后提升为「必须他人批准」 |
 
@@ -23,7 +23,7 @@ python3 tools/check-commits.py --range main..HEAD
 git commit -s                        # DCO 签名，见 CONTRIBUTING.md §3
 git rebase main                      # 保持线性历史
 git push -u origin agent/hex-retry
-# 在 GitHub 开 PR（模板自动带上）→ 等 CI 五个 job 全绿 → 维护者审阅 → 合并
+# 在 GitHub 开 PR（模板自动带上）→ 等 CI 六个 job 全绿 → 维护者审阅 → Rebase and merge
 ```
 
 ## 三、补丁必须保持同步（本仓库最容易踩的雷）
@@ -43,10 +43,11 @@ CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent�
 
 ## 四、几个实测过的坑
 
-1. **Squash 合并会重写作者**：squash 提交的作者是 GitHub 账号（邮箱取账号设置），
-   而 `Commit style` 检查要求 `Signed-off-by:` 与作者一致。稳妥做法是让本地 `user.email`
-   与 GitHub 账号邮箱一致，并在 PR 正文里也带上 `Signed-off-by: <同一邮箱>`；
-   或者改用 rebase 合并（保留原作者）。
+1. **只能用 Rebase and merge，不许 Squash**（`repository-settings.json` 只开了 rebase）：
+   Squash 会把整个 PR 压成一个提交，标题变成 PR 标题、正文被拼成一坨、每个提交的
+   `Signed-off-by:` 也不再是原文——#7 就是这么把 `main` 判红的（标题 `Agent/shutdown op (#7)`
+   不合内核规范，而 commit 门禁只能在**合并之后**才发现）。rebase 保留 PR 中每个提交的
+   作者与信息，代价是提交信息必须一开始就写对。
 2. **`strict` 检查要求 PR 追上最新 `main`**：main 前进后旧 PR 需要 rebase / update 才能合并
    （dependabot 的 PR 会自动更新）。
 3. **单人维护不要设 `required_approving_review_count: 1`**：GitHub 不允许自己批准自己的 PR，
@@ -69,6 +70,7 @@ CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent�
 | --- | --- |
 | 收紧到「必须他人批准」 | 先加协作者 / 第二账号，再把 `required_approving_review_count` 设为 1，`require_code_owner_reviews`、`require_last_push_approval` 设为 true，重跑 `tools/create-github-repo.ps1` |
 | 只要最基础保护（禁强推 / 禁删除） | 把 `required_pull_request_reviews` 与 `required_status_checks` 置空后重新施加 |
+| 改合并方式 | 改 `governance/repository-settings.json` 的 `allow_squash_merge` / `allow_rebase_merge` / `allow_merge_commit`，再跑 `tools/create-github-repo.ps1` |
 | 临时救急 | 改 GitHub Settings → Rules 后重跑脚本恢复；**不要**长期留 bypass |
 
 ## 六、提交前的本地自查

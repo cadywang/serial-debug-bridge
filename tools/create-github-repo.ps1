@@ -12,7 +12,7 @@
          - PR required, >=1 approving review, code-owner review required
          - stale reviews dismissed, last-push approval required
          - required status checks (CI jobs) must be green and up to date
-         - no force push, no deletion, squash-merge only, linear history
+         - no force push, no deletion, rebase-merge only, linear history
       4. create the first release tag (optional, -Release)
 
     Requires a token with the `repo` scope. It is never written to disk:
