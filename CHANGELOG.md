@@ -36,6 +36,11 @@
   （committer 是 `GitHub <noreply@github.com>`、标题以 ` (#N)` 结尾）：只跳过标题
   规范检查——标题改由新增的 PR 门禁在**合并前**拦截（见上「新增」）——
   DCO 与正文格式照旧校验；`tests/test_check_commits.py` 增到 18 例。
+- 合并方式改为**只允许 Rebase and merge**（`governance/repository-settings.json`）：
+  Squash 会把整个 PR 压成一个提交，提交标题变成 PR 标题、每个提交的 `Signed-off-by:`
+  也不再是原文——#7 就是这么把 `main` 判红的，而 `main` 的历史改不回来。rebase 让 PR 里
+  的原始提交原样落到 `main`，代价是提交信息必须一开始就写对；`pr-gate` 仍在合并前校验
+  PR 标题与模板清单。
 
 ### 验证
 - 本地 mock 自测（Windows）：`serial_agent.ps1` + `devctl.ps1` **12/12**（`auto` 与 `hex`
