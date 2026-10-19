@@ -16,6 +16,13 @@
 - 自测与 CI 覆盖停止路径：两套自测各自验证「shutdown 后进程退出、TCP 端口释放」，
   CI 新增 `devctl.py → serial_agent.ps1` 的 SHUTDOWN 交叉检查，以及 Windows
   `stop-agent.ps1`、Linux `stop-agent.sh` 各一次真实停止验证。
+- PR 门禁（`.github/workflows/pr-gate.yml` 的 `pr-gate`）：**PR 标题**必须走内核规范
+  `<subsystem>: <祈使句摘要>`，模板里的**「合并前清单」必须逐条勾选**，否则不能合并；
+  编辑 PR 描述（也就是勾清单）会自动重跑，避免用过期结果放行。标题规则与 commit 子标题
+  共用同一个函数（`tools/check-commits.py` 的 `subject_errors`）；清单条目来自
+  `.github/pull_request_template.md` 的「合并前清单」小节——改清单就得改模板，模板本身
+  也要过这道门禁，所以清单没法在合并时被悄悄放宽。工具 `tools/check-pr.py`，
+  自测 `tests/test_check_pr.py`（18 例）；机器人 PR（dependabot）跳过。
 
 ### 修复
 - CI 的提交规范门禁误拒 GitHub 网页端 squash 合并产生的提交：作者被改写成
@@ -23,6 +30,12 @@
   trailer 块之间（`main` 上 #4 / #5 合并后的构建就是这么红的）。现在 GitHub noreply
   的两种写法视为同一账号、`Co-authored-by:` 进入白名单，且只检查**最后一个** trailer
   块之后的正文；新增 `tests/test_check_commits.py`（15 例）并由 hygiene job 执行。
+- 网页端 squash 合并会把 **PR 标题**写成 `main` 上的提交标题：标题不合内核规范时，
+  commit 规范门禁在**合并之后**才把 `main` 判红，而受保护的历史又改不回来
+  （#7 合并后的构建就是这么红的）。现在识别这种由 GitHub 自己写出的提交
+  （committer 是 `GitHub <noreply@github.com>`、标题以 ` (#N)` 结尾）：只跳过标题
+  规范检查——标题改由新增的 PR 门禁在**合并前**拦截（见上「新增」）——
+  DCO 与正文格式照旧校验；`tests/test_check_commits.py` 增到 18 例。
 
 ### 验证
 - 本地 mock 自测（Windows）：`serial_agent.ps1` + `devctl.ps1` **12/12**（`auto` 与 `hex`

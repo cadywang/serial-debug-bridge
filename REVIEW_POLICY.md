@@ -11,7 +11,7 @@
 | 闸门 | 位置 | 拦什么 | 能不能绕过 |
 | --- | --- | --- | --- |
 | ① 分支保护 | `governance/branch-protection.json`（由 `tools/create-github-repo.ps1` 施加） | 直推 `main`、强推、删分支、检查没绿就合并 | 不能：`enforce_admins: true` + 空 bypass，管理员也一样 |
-| ② 自动校验 | `.github/workflows/ci.yml` | BOM/CRLF、语法、两套实现自测、交叉验证、commit 规范 + DCO | 不能：改 CI 自己也要走同一个 PR 流程 |
+| ② 自动校验 | `.github/workflows/ci.yml` + `.github/workflows/pr-gate.yml` | BOM/CRLF、语法、两套实现自测、交叉验证、commit 规范 + DCO、**PR 标题与「合并前清单」** | 不能：改 CI 自己也要走同一个 PR 流程 |
 | ③ 人工审查 | PR 本身 | 维护者看过 diff、复现步骤、自测输出后才合并 | 单人维护时维护者即作者（GitHub 不允许自批，因此不设强制批准数）；有协作者后提升为「必须他人批准」 |
 
 ## 二、日常流程
@@ -53,7 +53,12 @@ CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent�
    设了就会把自己锁死。
 4. **`.github/CODEOWNERS` 只有在开启「Require review from Code Owners」时才有强制力**；
    单人模式下该开关保持关闭是刻意的。
-5. **dependabot 的提交永远不符合内核风格**：它自动生成 `ci: bump <pkg> from 4 to 7`，
+5. **网页端 squash 合并用的是 PR 标题**：标题不合内核规范时，`Hygiene` 的 commit 门禁
+   只能在**合并之后**把 `main` 判红，而受保护的历史改不回来（#7 实测：标题写成
+   `Agent/shutdown op (#7)`，合并后 main 的构建就红了）。所以标题规范由 `pr-gate` 在
+   **合并前**拦，模板里的「合并前清单」也一样；提交门禁对这种由 GitHub 自己写出的提交
+   （committer 是 `GitHub <noreply@github.com>`、标题以 ` (#N)` 结尾）只做 DCO 与正文校验。
+6. **dependabot 的提交永远不符合内核风格**：它自动生成 `ci: bump <pkg> from 4 to 7`，
    而 `bump` 属于被禁止的动词（实测在本仓库的两个 dependabot PR 上就是这么红的）。
    CI 用 `--skip-bots` 放行 `*[bot]` 的提交、其余检查照跑；否则一旦把 CI 设为必需检查，
    依赖更新的 PR 会永久卡住。
@@ -70,6 +75,7 @@ CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent�
 
 ```bash
 python3 tools/check-commits.py --range main..HEAD   # commit 规范 + DCO
+python3 tools/check-pr.py --title "<subsystem>: 祈使句摘要>" --body-file pr.md   # PR 门禁本地预演
 powershell -ExecutionPolicy Bypass -File tests/selftest.ps1
 powershell -ExecutionPolicy Bypass -File tests/selftest.ps1 -Codec hex
 python3 tests/test_e2e.py

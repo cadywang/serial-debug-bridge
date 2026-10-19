@@ -32,8 +32,16 @@ PASS = 0
 FAIL = 0
 
 
-def commit(subject, body, email=PLAIN, name='cadywang'):
+def commit(subject, body, email=PLAIN, name='cadywang', committer=None):
+    """One commit record, shaped the way commits() builds them.
+
+    committer defaults to the author: a commit someone wrote locally. Pass
+    ('GitHub', 'noreply@github.com') for what the web UI commits when it
+    squash-merges a pull request.
+    """
+    cname, cemail = committer if committer else (name, email)
     return {'sha': '0' * 40, 'short': 'abcdef1', 'name': name, 'email': email,
+            'committer_name': cname, 'committer_email': cemail,
             'subject': subject, 'body': body}
 
 
@@ -90,6 +98,28 @@ def main():
                  'Signed-off-by: cadywang <%s>\n'
                  'Co-authored-by: cadywang <%s>\n'
                  % (PLAIN, PLAIN, ID_FORM), email=ID_FORM), True)
+
+    print('web-UI squash merge composes the subject itself')
+    GITHUB = ('GitHub', 'noreply@github.com')
+    SQUASH_BODY = ('\n* agent: keep the chunk undrained\n\nExplain why.\n\n'
+                   'Signed-off-by: cadywang <%s>\n\n'
+                   '* tests: cover the drained tail\n\nExplain that too.\n\n'
+                   '---------\n\n'
+                   'Signed-off-by: cadywang <%s>\n'
+                   'Co-authored-by: cadywang <%s>\n' % (PLAIN, PLAIN, ID_FORM))
+    check('a pull request title that is not kernel style is accepted',
+          commit('Agent/shutdown op (#7)', SQUASH_BODY, email=ID_FORM,
+                 committer=GITHUB), True)
+    check('the same subject written locally is still rejected',
+          commit('Agent/shutdown op (#7)',
+                 '\nExplain why.\n\n'
+                 'Signed-off-by: cadywang <%s>\n' % PLAIN,
+                 committer=('cadywang', PLAIN)), False)
+    check('a GitHub committer without " (#n)" keeps the subject rules',
+          commit('Agent/shutdown op',
+                 '\nExplain why.\n\n'
+                 'Signed-off-by: cadywang <%s>\n' % PLAIN,
+                 committer=GITHUB), False)
 
     print('layout and subject rules still bite')
     check('prose after the final trailer block is rejected',

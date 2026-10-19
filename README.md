@@ -529,7 +529,7 @@ python3 tests/test_e2e.py --target 127.0.0.1:7801
 | 必需审查 | ✅ 必须走 PR + CI 全绿；单人维护模式下由维护者审阅后合并（`required_approving_review_count: 0`，原因见 [REVIEW_POLICY.md](REVIEW_POLICY.md)） |
 | 过期审查 | 有新提交后自动作废（`dismiss_stale_reviews`） |
 | 最近推送审批 | ⚙️ 单人模式下关闭（`require_last_push_approval: false`）；有第二位维护者时开启 |
-| 必需状态检查 | ✅ CI 五个 job 全绿且为最新提交（见下表） |
+| 必需状态检查 | ✅ CI 六个 job 全绿且为最新提交（见下表） |
 | 讨论resolve | ✅ 全部 conversation 需被解决 |
 | 强推 / 删除分支 | ❌ 禁止 |
 | 合并后删除分支 | ✅ 自动删除 |
@@ -541,6 +541,12 @@ CI 必需检查（`governance/branch-protection.json` 中的 contexts）：
 3. `Python agent + CLI (mock) (ubuntu-latest)`
 4. `Python agent + CLI (mock) (windows-latest)`
 5. `Cross implementation check`
+6. `PR gate (title + merge checklist)`
+
+前五个在 `.github/workflows/ci.yml`，第六个在 `.github/workflows/pr-gate.yml`：
+`pr-gate` 校验 **PR 标题符合内核规范**（网页端 squash 合并会把标题写成提交标题）与
+**模板里「合并前清单」是否逐条勾选**，编辑 PR 描述后会重跑。改门禁或改清单都要走 PR，
+清单条目在 `.github/pull_request_template.md`。
 
 相关约定：
 
