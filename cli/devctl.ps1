@@ -10,6 +10,7 @@
         devctl pull  <remote> <local>   download a file from the device
         devctl md5   <remote>           show the device-side md5 of a file
         devctl reset                    reset the board via DTR
+        devctl shutdown                 stop the agent (frees the serial port)
         devctl info                     show agent / device information
         devctl shell                    interactive console (TCP only)
 
@@ -179,6 +180,15 @@ function Cmd-Reset {
   return 0
 }
 
+function Cmd-Shutdown {
+  $r = Invoke-Agent 'SHUTDOWN' $null ([byte[]]@())
+  if ($r.Status -ne 'OK') { Write-Info ('ERR: ' + (Get-BodyText $r.Body)); return 1 }
+  $agentPid = '?'
+  if ($r.Kv.ContainsKey('pid')) { $agentPid = $r.Kv['pid'] }
+  Write-Info ('agent stopped (pid=' + $agentPid + ')')
+  return 0
+}
+
 function Cmd-Exec {
   param([string]$CmdText)
   $kv = @{ timeout = [string]$Timeout }
@@ -286,6 +296,7 @@ try {
   switch ($Command.ToLowerInvariant()) {
     'info'  { $rc = Cmd-Info }
     'reset' { $rc = Cmd-Reset }
+    'shutdown' { $rc = Cmd-Shutdown }
     'md5'   { $rc = Cmd-Md5 -Remote $Rest[0] }
     'exec'  { $rc = Cmd-Exec -CmdText ($Rest -join ' ') }
     'push'  { $rc = Cmd-Push -Local $Rest[0] -Remote $Rest[1] }
