@@ -30,6 +30,9 @@ python3 tests/test_e2e.py
 python3 tests/test_e2e.py --agent-args '--codec hex'
 ```
 
+> 自测默认自己挑空闲端口（`-Port` / `--port` 可指定）；端口已被占用时**直接报错**（退出码 2），
+> 不会卡住。
+
 有真实设备/串口时，再跑一次端到端确认：
 
 ```bash
