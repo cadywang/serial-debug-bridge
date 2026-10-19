@@ -127,19 +127,18 @@ def is_mergeish(subject: str) -> bool:
     return subject.startswith(('Merge ', 'fixup!', 'squash!', 'Revert '))
 
 
-def check_one(c: dict, args) -> list:
+def subject_errors(subj: str, args) -> list:
+    """Rules 1 and 2: "<subsystem>: <imperative summary>", <= subject_max.
+
+    Kept separate because the pull request gate (tools/check-pr.py) judges the
+    pull request title with exactly these rules: a squash merge writes that
+    title into main as the commit subject, so both have to agree.
+    """
     errs = []
-    subj = c['subject']
-    body = c['body'] or ''
-
-    if is_mergeish(subj):
-        return errs
-
-    # 1/2: subject line
     if not SCOPE_RE.match(subj):
         errs.append('subject must start with "<subsystem>: " (e.g. "agent: fix ...")')
     if CONVENTIONAL_RE.match(subj):
-        errs.append('do not use conventional-commit tags (feat:/fix:/...); ' 
+        errs.append('do not use conventional-commit tags (feat:/fix:/...); '
                     'use kernel style "<subsystem>: <imperative summary>"')
     if subj.endswith('.'):
         errs.append('subject must not end with a period')
@@ -151,6 +150,19 @@ def check_one(c: dict, args) -> list:
         errs.append('subject must use the imperative mood, not "%s"' % first)
     if first.endswith('ed') and first not in ('ed',) and len(first) > 3 and first not in BAD_FIRST_WORDS:
         errs.append('subject looks past tense ("%s"); use the imperative mood' % first)
+    return errs
+
+
+def check_one(c: dict, args) -> list:
+    errs = []
+    subj = c['subject']
+    body = c['body'] or ''
+
+    if is_mergeish(subj):
+        return errs
+
+    # 1/2: subject line
+    errs.extend(subject_errors(subj, args))
 
     # 3: blank line between subject and body is implicit in %s/%b, but reject
     #    a body that repeats the subject or starts immediately with a paragraph.
