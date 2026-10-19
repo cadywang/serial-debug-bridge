@@ -14,7 +14,7 @@
 #>
 [CmdletBinding()]
 param(
-  [int]$Port = 17801,
+  [int]$Port = 0,
   [string]$Agent  = '',
   [string]$Devctl = '',
   [string]$Target = '',
@@ -35,6 +35,31 @@ $script:Fail = 0
 $tmp = Join-Path (Split-Path -Parent $PSScriptRoot) '.tmp-selftest'
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $skipStart = [bool]$Target
+
+# The test agent binds 0.0.0.0, and on Windows a more specific 127.0.0.1
+# listener wins over it -- VS Code forwards the ports it sees in the terminal,
+# which is how the old fixed default (17801) ended up talking to a stranger and
+# hanging inside devctl instead of failing. Ask the OS for a free port instead,
+# and refuse to run against an explicit port that somebody already answers.
+function Test-PortBusy {
+  param([int]$P)
+  try { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $P); $c.Close(); return $true }
+  catch { return $false }
+}
+
+if (-not $skipStart) {
+  if ($Port -le 0) {
+    $probe = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+    $probe.Start()
+    $Port = ([System.Net.IPEndPoint]$probe.LocalEndpoint).Port
+    $probe.Stop()
+  } elseif (Test-PortBusy -P $Port) {
+    Write-Host ("selftest: 127.0.0.1:{0} already answers - refusing to guess who it is." -f $Port)
+    Write-Host 'selftest: pass -Port <free port>, or stop whatever listens there.'
+    exit 2
+  }
+}
+
 $target = if ($Target) { $Target } else { "127.0.0.1:$Port" }
 
 # Run devctl.ps1 the way a user would (out of process) and return its stdout.

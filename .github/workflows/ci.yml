@@ -113,7 +113,8 @@ jobs:
 
       - name: selftest (auto codec)
         shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/selftest.ps1 -Port 17801
+        # no -Port: the self test picks a free one, same as a developer would
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/selftest.ps1
 
       - name: selftest (hex codec)
         shell: powershell
@@ -152,7 +153,8 @@ jobs:
           python-version: '3.11'
 
       - name: e2e (auto codec)
-        run: python tests/test_e2e.py --port 17810
+        # no --port: the test picks a free one
+        run: python tests/test_e2e.py
 
       - name: e2e (hex codec)
         run: python tests/test_e2e.py --port 17811 --agent-args "--codec hex"
