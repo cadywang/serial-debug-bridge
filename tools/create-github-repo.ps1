@@ -107,6 +107,20 @@ try {
   $settings = Get-Content -Raw "$root\governance\repository-settings.json" | ConvertFrom-Json
   $protection = Get-Content -Raw "$root\governance\branch-protection.json" | ConvertFrom-Json
 
+  # GitHub refuses the squash/merge title fields while that strategy is off
+  # ("no_squash_merge_strategy"), so only send the ones the enabled strategies
+  # can carry -- and only when the settings file still lists them.
+  $settingsKeys = @($settings.PSObject.Properties.Name)
+  $mergeFields = @{}
+  if ($settings.allow_squash_merge) {
+    foreach ($k in @('squash_merge_commit_message', 'squash_merge_commit_title')) {
+      if ($settingsKeys -contains $k) { $mergeFields[$k] = $settings.$k }
+    }
+  }
+  if ($settings.allow_merge_commit -and $settingsKeys -contains 'merge_commit_title') {
+    $mergeFields['merge_commit_title'] = $settings.merge_commit_title
+  }
+
   # ---- 1. create repository ----
   Write-Host "==> repository"
   $existing = $null
@@ -116,7 +130,7 @@ try {
   if ($existing) {
     Write-Host "    exists: $($existing.full_name) (visibility=$($existing.private))"
     try {
-    Invoke-Gh 'PATCH' "$api/repos/$Owner/$Repo" @{
+    Invoke-Gh 'PATCH' "$api/repos/$Owner/$Repo" (@{
       description              = $settings.description
       has_issues               = [bool]$settings.has_issues
       has_projects             = [bool]$settings.has_projects
@@ -127,10 +141,7 @@ try {
       allow_rebase_merge       = [bool]$settings.allow_rebase_merge
       allow_auto_merge         = [bool]$settings.allow_auto_merge
       delete_branch_on_merge   = [bool]$settings.delete_branch_on_merge
-      squash_merge_commit_message = $settings.squash_merge_commit_message
-      squash_merge_commit_title  = $settings.squash_merge_commit_title
-      merge_commit_title         = $settings.merge_commit_title
-    } 'patch' | Out-Null
+    } + $mergeFields) 'patch' | Out-Null
       Write-Host '    settings updated'
     } catch {
       Write-Host '    warn: this token cannot update repository settings (needs administration:write)'
@@ -146,14 +157,12 @@ try {
       has_projects             = [bool]$settings.has_projects
       has_wiki                 = [bool]$settings.has_wiki
       auto_init                = $false
-      squash_merge_commit_message = $settings.squash_merge_commit_message
-      squash_merge_commit_title  = $settings.squash_merge_commit_title
-      merge_commit_title         = $settings.merge_commit_title
       allow_squash_merge       = [bool]$settings.allow_squash_merge
       allow_merge_commit       = [bool]$settings.allow_merge_commit
       allow_rebase_merge       = [bool]$settings.allow_rebase_merge
       delete_branch_on_merge   = [bool]$settings.delete_branch_on_merge
     }
+    $body += $mergeFields
     Invoke-Gh 'POST' "$api/users/$Owner/repos" $body 'create' | Out-Null
     Write-Host "    created $Owner/$Repo"
   }
