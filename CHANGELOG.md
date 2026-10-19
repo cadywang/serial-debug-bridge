@@ -23,6 +23,12 @@
   trailer 块之间（`main` 上 #4 / #5 合并后的构建就是这么红的）。现在 GitHub noreply
   的两种写法视为同一账号、`Co-authored-by:` 进入白名单，且只检查**最后一个** trailer
   块之后的正文；新增 `tests/test_check_commits.py`（15 例）并由 hygiene job 执行。
+- 网页端 squash 合并会把 **PR 标题**写成 `main` 上的提交标题：标题不合内核规范时，
+  commit 规范门禁在**合并之后**才把 `main` 判红，而受保护的历史又改不回来
+  （#7 合并后的构建就是这么红的）。现在识别这种由 GitHub 自己写出的提交
+  （committer 是 `GitHub <noreply@github.com>`、标题以 ` (#N)` 结尾）：只跳过标题
+  规范检查——标题改由新增的 PR 门禁在**合并前**拦截（见上「新增」）——
+  DCO 与正文格式照旧校验；`tests/test_check_commits.py` 增到 18 例。
 
 ### 验证
 - 本地 mock 自测（Windows）：`serial_agent.ps1` + `devctl.ps1` **12/12**（`auto` 与 `hex`

@@ -18,7 +18,11 @@ Squash merges made through the GitHub web UI are accepted as well: GitHub
 rewrites the author to "<id>+<login>@users.noreply.github.com" (the same account
 as the "<login>@users.noreply.github.com" that "git commit -s" writes), appends
 a "Co-authored-by:" trailer, and may interleave body text between trailer
-blocks.
+blocks. It also composes the subject -- the pull request title plus
+" (#<number>)", committed by GitHub itself. Nobody typed that line into git
+and the pull request gate (tools/check-pr.py) checks the title before the
+merge, so the subject rules are skipped for those commits; see
+is_web_ui_squash().
 
 Usage:
     tools/check-commits.py                     # check HEAD
@@ -48,6 +52,10 @@ TRAILER_RE = re.compile(r'^([A-Z][A-Za-z-]*): (\S.*)$')
 # pull request is squash-merged from the web UI, while "git commit -s" writes
 # "<login>@users.noreply.github.com": both name the same account.
 NOREPLY_RE = re.compile(r'^(?:(\d+)\+)?([^@+]+)@users\.noreply\.github\.com$', re.I)
+# The web UI squash-merges as the "GitHub" web-flow account and marks the
+# pull request number in the subject it composes.
+GITHUB_COMMITTER_RE = re.compile(r'<noreply@github\.com>', re.I)
+SQUASH_SUBJECT_RE = re.compile(r'\s\(#\d+\)$')
 FIXES_RE = re.compile(r'^Fixes: ([0-9a-f]{7,40}) \(.*\)\s*$')
 # Only the purely "type" keywords are rejected. docs:/ci:/net:/arm: and friends
 # are ordinary subsystem prefixes in kernel style, so they stay allowed.
@@ -94,7 +102,7 @@ def run(*args: str, required: bool = True):
 
 
 def commits(rng: str | None, all_: bool) -> list:
-    fmt = SEP.join(['%H', '%h', '%an', '%ae', '%s', '%b']) + RS
+    fmt = SEP.join(['%H', '%h', '%an', '%ae', '%cn', '%ce', '%s', '%b']) + RS
     head_only = ['git', 'log', '--pretty=format:' + fmt, '-n', '1']
 
     if all_:
@@ -115,16 +123,35 @@ def commits(rng: str | None, all_: bool) -> list:
         if not rec.strip():
             continue
         parts = rec.split(SEP)
-        if len(parts) < 6:
+        if len(parts) < 8:
             continue
         res.append({'sha': parts[0], 'short': parts[1], 'name': parts[2],
-                    'email': parts[3], 'subject': parts[4],
-                    'body': parts[5].lstrip('\n')})
+                    'email': parts[3], 'committer_name': parts[4],
+                    'committer_email': parts[5], 'subject': parts[6],
+                    'body': parts[7].lstrip('\n')})
     return res
 
 
 def is_mergeish(subject: str) -> bool:
     return subject.startswith(('Merge ', 'fixup!', 'squash!', 'Revert '))
+
+
+def is_web_ui_squash(c: dict) -> bool:
+    """True for the commit the GitHub web UI writes for a squash merge.
+
+    GitHub composes it from metadata instead of a message anyone typed:
+    the subject is the pull request title plus " (#<number>)" and the
+    committer is GitHub's web-flow account. The commits it squashed survive
+    only as body text. The pull request gate checks that title before the
+    merge, so skipping the subject rules here neither weakens nor duplicates
+    it -- while re-running this check on an already merged pull request
+    cannot fail a merge that the gate had approved.
+    """
+    if not SQUASH_SUBJECT_RE.search(c.get('subject') or ''):
+        return False
+    committer = '%s <%s>' % (c.get('committer_name', ''),
+                             c.get('committer_email', ''))
+    return bool(GITHUB_COMMITTER_RE.search(committer))
 
 
 def subject_errors(subj: str, args) -> list:
@@ -161,8 +188,10 @@ def check_one(c: dict, args) -> list:
     if is_mergeish(subj):
         return errs
 
-    # 1/2: subject line
-    errs.extend(subject_errors(subj, args))
+    # 1/2: subject line. A web-UI squash merge puts the pull request title
+    # here; that title is checked by the pull request gate instead.
+    if not is_web_ui_squash(c):
+        errs.extend(subject_errors(subj, args))
 
     # 3: blank line between subject and body is implicit in %s/%b, but reject
     #    a body that repeats the subject or starts immediately with a paragraph.
