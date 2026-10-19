@@ -44,6 +44,16 @@ def devctl(args):
     return pr.returncode, pr.stdout, pr.stderr
 
 
+def port_busy(host, port):
+    """True when something already answers on host:port."""
+    try:
+        s = socket.create_connection((host, port), timeout=1)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
 def wait_port(host, port, seconds=20):
     end = time.time() + seconds
     while time.time() < end:
@@ -60,7 +70,8 @@ def main():
     global TARGET
     ap = argparse.ArgumentParser()
     ap.add_argument('--target', default='')
-    ap.add_argument('--port', type=int, default=17870)
+    ap.add_argument('--port', type=int, default=0,
+                    help='port for the agent this test starts (default: pick a free one)')
     ap.add_argument('--agent', default=os.path.join(ROOT, 'agent', 'serial_agent.py'))
     ap.add_argument('--agent-args', default='')
     opts = ap.parse_args()
@@ -70,8 +81,23 @@ def main():
         TARGET = opts.target
         print('testing against external target %s' % TARGET)
     else:
+        # The agent binds 0.0.0.0 and on Windows a more specific 127.0.0.1
+        # listener wins over it (VS Code forwards the ports it sees), so a fixed
+        # default port can send the whole test to a stranger. Ask the OS for a
+        # free one instead of guessing.
+        if not opts.port:
+            probe = socket.socket()
+            try:
+                probe.bind(('127.0.0.1', 0))
+                opts.port = probe.getsockname()[1]
+            finally:
+                probe.close()
+        elif port_busy('127.0.0.1', opts.port):
+            print('port %d already answers on 127.0.0.1; pass --port <free port>'
+                  % opts.port)
+            return 2
         TARGET = '127.0.0.1:%d' % opts.port
-        print('starting agent: %s (--mock)' % opts.agent)
+        print('starting agent: %s (--mock) on port %d' % (opts.agent, opts.port))
         extra = opts.agent_args.split() if opts.agent_args else []
         proc = subprocess.Popen([PYTHON, opts.agent, '--mock', '--tcp-port', str(opts.port)] + extra,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
