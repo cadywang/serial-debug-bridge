@@ -31,6 +31,7 @@ $S push ./fw.bin /tmp/fw.bin    # server -> 设备（设备侧 md5 校验）
 $S pull /etc/hostname ./h       # 设备 -> server（落盘后 md5 校验）
 $S md5 /tmp/fw.bin              # 设备侧 md5
 $S reset                        # 通过 DTR 复位（会打断设备，先确认）
+$S shutdown                     # 让 client 上的 agent 退出，释放串口
 $S shell                        # 交互式控制台（仅 TCP），Ctrl+] 退出
 ```
 
@@ -97,16 +98,23 @@ $S exec 'command -v busybox base64 openssl awk od md5sum'
    设备自己重启了，不是桥的问题。agent 超时会把控制台最后 200 字节打进日志
    （`console said: ...`），先看那条；重新登录后再传。
 
-5. **设备停在 `login:`（重启后最常见）——先以 root 登录，别硬试**
+5. **agent 停不下来 / 串口被它占住**
+   还连得上就 `$S shutdown`（agent 自己退出并释放串口）；连不上（孤儿进程）就在 client 上跑
+   `agent/stop-agent.ps1 -Port COM3`（Windows）或 `agent/stop-agent.sh --port /dev/ttyUSB0`（Linux），
+   先加 `-List` / `--list` 看会停谁。详见 `references/troubleshooting.md` §12。
+
+6. **设备停在 `login:`（重启后最常见）——先以 root 登录，别硬试**
    登录提示符要的是「用户名 + 密码」两行，而 `exec` 发的是「命令 + 探针」，
    于是命令被当成用户名、探针行被当成密码：**必然失败，还白等一个 30 秒超时**（试几次就是几分钟）。
    这些开发板 root 通常**无密码**，直接登录即可：
 
    * 人在终端：`$S shell` → 看到 `login:` 输入 `root` 回车 → `Ctrl+]` 退出；
-   * 脚本化 / 无人值守：client 上以 **raw 透传**启动 agent（先停掉协议模式 agent，串口独占）：
+   * 脚本化 / 无人值守：client 上以 **raw 透传**启动 agent（串口独占，先停掉协议模式 agent：
+     `$S shutdown`，或在 client 上跑 `stop-agent.ps1` / `stop-agent.sh`）：
      `powershell -File <client>\agent\serial_agent.ps1 -Port COM3 -Baud 460800 -TcpPort 17801 -Raw`，
      再从 server 侧发两行：`printf '\nroot\n' | nc 127.0.0.1 17801`，看到 `root@<host>:~#` 即成功；
-     然后停掉 raw agent、改回协议模式重启 agent。
+     然后停掉 raw agent（raw 模式没有协议通道，只能用 client 上的 `stop-agent` 脚本）、
+     改回协议模式重启 agent。
 
    登录状态会一直保持（agent 持有同一条串口会话），所以**一次会话只需登录一次**。
    详见 `references/troubleshooting.md` §10。

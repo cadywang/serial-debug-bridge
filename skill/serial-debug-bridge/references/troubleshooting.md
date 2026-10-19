@@ -142,3 +142,51 @@ agent 在超时时会把控制台最后约 200 字节写进日志（`-LogFile`�
 本文列的多半是使用姿势与环境问题。若确认是桥自身的缺陷（稳定复现、与设备无关），
 按 `SKILL.md` 的「发现 bug：请提交 patch」把最小复现 + `fix.patch` + 自测输出交回上游，
 不要只在上层脚本里绕过去——绕过会让下一个人再踩一次。
+
+## 12. 串口被 agent 占住 / agent 停不下来
+
+症状：`info` / `exec` 超时或 `agent closed the connection`，client 上的串口工具报
+「访问被拒绝 / busy」，而你以为 agent 早就不在了。
+
+原因：串口是**独占**的，agent 只要还活着就占着它。最常见的两种情况：
+
+* 启动 agent 的窗口 / SSH 会话没了，进程却留了下来（孤儿进程）；
+* 想换一个 agent（换波特率、换串口、切到 `-Raw` 去登录控制台），旧的那个还在跑。
+
+处理：
+
+1. **还连得上 agent 时**（TCP 或 SSH）——让 agent 自己退出：
+
+   ```bash
+   $S shutdown        # 回应里带 pid，便于确认停的是哪一个
+   ```
+
+   注意这会打断别人正在用的链路（agent 单线程，一次只服务一个会话）。
+
+2. **连不上时**（人在 client 机器上）：
+
+   ```powershell
+   # Windows：先 -List 只看不杀
+   powershell -ExecutionPolicy Bypass -File agent\stop-agent.ps1 -List
+   powershell -ExecutionPolicy Bypass -File agent\stop-agent.ps1 -Port COM3
+   ```
+
+   ```bash
+   # Linux / macOS
+   ./agent/stop-agent.sh --list
+   ./agent/stop-agent.sh --port /dev/ttyUSB0
+   ```
+
+   脚本按**启动方式**匹配 agent（`-File <脚本>`，或脚本作为参数），过滤条件支持串口名与
+   TCP 端口，停完会复核进程是否真的没了。装了 systemd 单元的直接 `sudo systemctl stop serial-agent`。
+
+3. **还是打不开**：那就不是 agent。串口终端（PuTTY / MobaXterm / IDE 的串口监视器）也会
+   一直占着它，先关掉；Windows 上要确认谁持有句柄，可用 Sysinternals `handle64.exe -a <设备名>`，
+   设备名是驱动对象名而不是 `COM3`（本次实测的 FTDI 串口是 `VCP0`），可以用注册表映射查到：
+
+   ```powershell
+   Get-ItemProperty 'HKLM:\HARDWARE\DEVICEMAP\SERIALCOMM'   # -> \Device\VCP0 : COM3
+   ```
+
+> `shutdown` 与 `stop-agent*` 只结束 **agent 进程**（串口随之释放），不会动设备；别和 `reset`
+> 搞混——`reset` 拉 DTR 会重启设备。
