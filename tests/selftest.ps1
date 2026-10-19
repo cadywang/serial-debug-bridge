@@ -150,6 +150,23 @@ try {
   $raw = [System.Text.Encoding]::ASCII.GetString($buf, 0, $n)
   $client.Close()
   Check 'interactive shell returns device output' ($raw -match 'Linux mock') ("raw=[" + $raw.Trim() + "]")
+
+  # 9) shutdown: the agent answers, exits and gives the port back. Skipped
+  #    with -Target, because that agent belongs to whoever started it.
+  if (-not $skipStart) {
+    $out = Invoke-Devctl @('shutdown') -Diag
+    Check 'shutdown is acknowledged' ($script:LastExit -eq 0) $out
+    $gone = $false
+    for ($i = 0; $i -lt 40; $i++) {
+      if ($proc.HasExited) { $gone = $true; break }
+      Start-Sleep -Milliseconds 250
+    }
+    Check 'the agent exits after shutdown' $gone
+    $free = $false
+    try { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $tport); $c.Close() }
+    catch { $free = $true }
+    Check 'the TCP port is released with it' $free
+  }
 }
 finally {
   try { if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } } catch { }

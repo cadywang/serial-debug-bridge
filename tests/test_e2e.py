@@ -119,6 +119,27 @@ def main():
 
         rc, out, err = devctl(['reset'])
         check('reset accepted', rc == 0, 'rc=%d' % rc)
+
+        # Only when this test started the agent: an external --target one
+        # belongs to whoever started it.
+        if proc:
+            rc, out, err = devctl(['shutdown'])
+            check('shutdown acknowledged', rc == 0, err[:200])
+            gone = False
+            end = time.time() + 10
+            while time.time() < end:
+                if proc.poll() is not None:
+                    gone = True
+                    break
+                time.sleep(0.2)
+            check('the agent exits after shutdown', gone)
+            free = False
+            try:
+                s = socket.create_connection(('127.0.0.1', opts.port), timeout=1)
+                s.close()
+            except OSError:
+                free = True
+            check('the TCP port is released with it', free)
     finally:
         if proc:
             proc.kill()
