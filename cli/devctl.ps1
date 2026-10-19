@@ -62,6 +62,9 @@ $script:In     = $null
 $script:Out    = $null
 $script:Proc   = $null
 $script:LastRc = 0
+# devctl.py gives up on connecting after 15 s; the PowerShell edition used to
+# block forever, which made an unreachable endpoint look like a hung script.
+$script:ConnectTimeoutMs = 15000
 
 function Write-Info { param([string]$m) if (-not $Quiet) { [Console]::Error.WriteLine($m) } }
 
@@ -131,7 +134,20 @@ function Connect-Agent {
     if ($Tcp -match '^(.*):(\d+)$') { $h = $Matches[1]; $port = [int]$Matches[2] }
     $client = New-Object System.Net.Sockets.TcpClient
     $client.NoDelay = $true
-    $client.Connect($h, $port)
+    try {
+      $async = $client.BeginConnect($h, $port, $null, $null)
+      if (-not $async.AsyncWaitHandle.WaitOne($script:ConnectTimeoutMs)) {
+        throw ('connect timed out after ' + $script:ConnectTimeoutMs + ' ms')
+      }
+      $client.EndConnect($async)
+    } catch {
+      try { $client.Close() } catch { }
+      # EndConnect wraps the socket error, so unwrap it for a readable line.
+      $why = $_.Exception.Message
+      if ($_.Exception.InnerException) { $why = $_.Exception.InnerException.Message }
+      Write-Info ("ERR: cannot connect to tcp:{0}:{1}: {2}" -f $h, $port, $why)
+      exit 1
+    }
     $script:In  = $client.GetStream()
     $script:Out = $client.GetStream()
     Write-Info ("connected to tcp:{0}:{1}" -f $h, $port)
