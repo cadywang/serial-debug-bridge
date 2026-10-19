@@ -45,6 +45,10 @@
   端口转发占着（Windows 上更具体的 `127.0.0.1` 监听会盖过 agent 的 `0.0.0.0`），devctl 于是
   连到了陌生人身上并永远等回复。现在两套自测**默认向系统要一个空闲端口**
   （`-Port` / `--port` 仍可指定），指定的端口已被占用时立刻报错退出（退出码 2）。
+- `tools/create-github-repo.ps1` 在 squash 关闭时会被 GitHub 拒掉（`no_squash_merge_strategy`，
+  422）——治理文件里还留着 `squash_merge_commit_message` / `squash_merge_commit_title` /
+  `merge_commit_title`，而 GitHub 不允许给已关闭的合并策略设置这些字段。现在只发送
+  **当前启用**且有值的字段，治理文件也不再保留这三项（本次对齐线上设置时就是这么被拒的）。
 - `cli/devctl.ps1` 的连接没有超时（`devctl.py` 一直是 15 秒），端口不通时脚本会一直挂着。
   现在两版一致：连不上或超时在 15 秒内报错退出（退出码 1），错误信息也去掉了 .NET 包装。
 
