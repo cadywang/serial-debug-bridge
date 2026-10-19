@@ -37,6 +37,11 @@
 | `RESET` | 空 | 拉低再拉高 DTR；可选 `delay=<ms>` |
 | `SHELL` | 空 | 收到 `OK` 后，连接转为**原始透传**（仅 TCP 传输支持） |
 | `BYE` | 空 | 结束会话并关闭连接 |
+| `SHUTDOWN` | 空 | 让 **agent 自己**退出并释放串口；响应 `OK pid=<n>` 后连接关闭 |
+
+`SHUTDOWN` 停的是 client 上的 agent 进程（串口随之释放），不是设备。它需要一条协议通道，
+因此只支持 TCP 与 stdio；`-Raw` / `--raw` 透传模式没有协议，请直接在 client 上结束进程。
+响应里的 `pid` 让调用方确认停掉的是哪一个 agent。
 
 ## 4. 响应字段
 
@@ -45,6 +50,7 @@
 | `OK` + `EXEC` | `rc=<n>` | 设备命令退出码 |
 | `OK` + `PUSH` | `written=<n>` `md5=<hex>` `verified=<True/False>` | 写入字节数、本地 md5、设备侧 md5 是否一致 |
 | `OK` + `PULL` | `md5=<hex>` | 下载内容的 md5 |
+| `OK` + `SHUTDOWN` | `pid=<n>` | 即将退出的 agent 进程号 |
 | `ERR` | `code=<c>` `msg=<m>` | 错误类别与说明 |
 
 常见 `code`：`auth` `timeout` `device` `decode` `badrequest` `too-large`

@@ -5,12 +5,30 @@
 
 ## [Unreleased]
 
+### 新增
+- `SHUTDOWN` 操作：`devctl ... shutdown` 让 client 上的 agent **自己退出并释放串口**
+  （TCP 与 SSH/stdio 都支持，响应 `OK pid=<n>`）。此前只能到 client 机器上找进程或按
+  Ctrl+C；两套 agent 与两套 CLI 同步实现，`PROTOCOL.md` / `README.md` 一并更新。
+- `agent/stop-agent.ps1`（双击版 `stop-agent.bat`）与 `agent/stop-agent.sh`：agent 成了孤儿、
+  占着串口又连不上时，在 client 本机按**启动方式**把它找出来并结束（`-Port` / `-TcpPort`
+  过滤，`-List` / `--list` 只列不杀，`-WhatIf` 预演）；停完会复核进程是否真的没了，
+  复核不通过就报失败，不会假装成功。
+- 自测与 CI 覆盖停止路径：两套自测各自验证「shutdown 后进程退出、TCP 端口释放」，
+  CI 新增 `devctl.py → serial_agent.ps1` 的 SHUTDOWN 交叉检查，以及 Windows
+  `stop-agent.ps1`、Linux `stop-agent.sh` 各一次真实停止验证。
+
 ### 修复
 - CI 的提交规范门禁误拒 GitHub 网页端 squash 合并产生的提交：作者被改写成
   `<ID>+<login>@users.noreply.github.com`、自动追加 `Co-authored-by:`，正文还可能夹在
   trailer 块之间（`main` 上 #4 / #5 合并后的构建就是这么红的）。现在 GitHub noreply
   的两种写法视为同一账号、`Co-authored-by:` 进入白名单，且只检查**最后一个** trailer
   块之后的正文；新增 `tests/test_check_commits.py`（15 例）并由 hygiene job 执行。
+
+### 验证
+- 本地 mock 自测（Windows）：`serial_agent.ps1` + `devctl.ps1` **12/12**（`auto` 与 `hex`
+  两种编码），`serial_agent.py` + `devctl.py` **11/11**；交叉组合
+  （`devctl.py → serial_agent.ps1`、`devctl.ps1 → serial_agent.py`）的 `shutdown` 亦通过，
+  之后 agent 进程退出、TCP 端口重新可绑定。
 
 ## [1.0.0] - 2026-10-15
 

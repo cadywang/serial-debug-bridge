@@ -11,6 +11,7 @@
       * upload a file from the server to the device           (PUSH)
       * download a file from the device to the server         (PULL)
       * reset the board via DTR                               (RESET)
+      * stop the agent itself and release the serial port     (SHUTDOWN)
 
         remote devctl  <--TCP / SSH-->  this agent  <--UART-->  embedded device
 
@@ -71,6 +72,7 @@ $script:Codecs = @(
 )
 $script:CodecSel = $null
 $script:CodecProbed = $false
+$script:Shutdown = $false     # set by the SHUTDOWN op; unwinds both loops
 if ($Codec -and $Codec -ne 'auto' -and (@($script:Codecs | ForEach-Object { $_.Name }) -notcontains $Codec)) {
   Write-Log ('unknown -Codec ''' + $Codec + ''' ; using auto') 'WARN'
   $Codec = 'auto'
@@ -695,6 +697,14 @@ function Invoke-Request {
       Send-Message $Out 'OK' ([byte[]]@())
       return $false
     }
+    'SHUTDOWN' {
+      # Stop the agent itself, not the device. The serial port stays busy
+      # until this process is gone, which is what the caller wants back.
+      Write-Log 'Shutdown requested by devctl; releasing the serial port.'
+      $script:Shutdown = $true
+      Send-Message $Out ('OK pid=' + $PID) ([byte[]]@())
+      return $false
+    }
     default {
       Send-Message $Out 'ERR code=unknown-op msg=unsupported' ($script:Utf8.GetBytes($Op))
       return $true
@@ -1007,6 +1017,7 @@ try {
       } finally {
         try { $client.Close() } catch { }
       }
+      if ($script:Shutdown) { break }
     }
   }
 } finally {

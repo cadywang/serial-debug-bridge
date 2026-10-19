@@ -14,6 +14,7 @@ Commands
     pull  <remote> <local>     download a file from the device
     md5   <remote>             device-side md5 of a file
     reset                      reset the board via DTR
+    shutdown                   stop the agent (frees the serial port)
     info                       show agent / device information
     shell                      interactive console (TCP transport only)
 
@@ -166,6 +167,16 @@ def cmd_reset(ag, args):
     return 0
 
 
+def cmd_shutdown(ag, args):
+    """Ask the agent to exit; the client-side serial port is released."""
+    st, meta, body = ag.request('SHUTDOWN')
+    if st != 'OK':
+        info('ERR: ' + body.decode('utf-8', 'replace'))
+        return 1
+    info('agent stopped (pid=%s)' % meta.get('pid', '?'))
+    return 0
+
+
 def cmd_exec(ag, args):
     cmd_text = args[0] if args else ''
     st, meta, body = ag.request('EXEC', cmd_text.encode('utf-8'), timeout=TIMEOUT)
@@ -289,7 +300,8 @@ def main() -> int:
     ap.add_argument('--timeout', type=int, default=30000, help='per-command timeout in milliseconds')
     ap.add_argument('--token', default='', help='auth token if the agent was started with --auth')
     ap.add_argument('-q', '--quiet', action='store_true', help='suppress diagnostic messages')
-    ap.add_argument('command', choices=['exec', 'push', 'pull', 'md5', 'reset', 'info', 'shell'])
+    ap.add_argument('command',
+                    choices=['exec', 'push', 'pull', 'md5', 'reset', 'shutdown', 'info', 'shell'])
     ap.add_argument('args', nargs=argparse.REMAINDER)
     opts = ap.parse_args()
 
@@ -308,8 +320,9 @@ def main() -> int:
                 info('ERR: authentication failed')
                 return 3
         table = {
-            'info': cmd_info, 'reset': cmd_reset, 'exec': cmd_exec,
-            'push': cmd_push, 'pull': cmd_pull, 'md5': cmd_md5, 'shell': cmd_shell,
+            'info': cmd_info, 'reset': cmd_reset, 'shutdown': cmd_shutdown,
+            'exec': cmd_exec, 'push': cmd_push, 'pull': cmd_pull, 'md5': cmd_md5,
+            'shell': cmd_shell,
         }
         return table[opts.command](ag, opts.args)
     finally:

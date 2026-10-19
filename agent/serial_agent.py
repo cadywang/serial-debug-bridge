@@ -10,7 +10,8 @@ bridges that console to TCP or stdio, speaking the same tiny
     remote devctl  <--TCP / SSH-->  this agent  <--UART-->  embedded device
 
 Capabilities: EXEC (run a command), PUSH (upload file), PULL (download file),
-MD5, RESET (DTR), SHELL (interactive), INFO, PING.
+MD5, RESET (DTR), SHELL (interactive), INFO, PING, SHUTDOWN (exit this agent
+so the serial port is released).
 
 Dependencies: pyserial is required ONLY when opening a real serial port.
 `--mock` runs the built-in fake device and needs nothing but the stdlib.
@@ -691,6 +692,7 @@ def _build_push_script(codec, q, data) -> str:
     return '%s > %s << %s\n%s\n%s' % (codec['dec'], q, shquote(delim), '\n'.join(lines), delim)
 
 def dispatch(dev, wfile, op, kv, body, info) -> bool:
+    global SHUTDOWN_REQUESTED
     if op == 'PING':
         write_message(wfile, 'OK', b'pong')
         return True
@@ -768,6 +770,13 @@ def dispatch(dev, wfile, op, kv, body, info) -> bool:
         hexd = first[0] if first else ''
         write_message(wfile, 'OK', hexd.encode('utf-8'))
         return True
+    if op == 'SHUTDOWN':
+        # Stop the agent itself, not the device: the serial port stays busy
+        # until this process is gone, which is what the caller wants back.
+        SHUTDOWN_REQUESTED = True
+        log('Shutdown requested by devctl; releasing the serial port.')
+        write_message(wfile, 'OK', b'', pid=os.getpid())
+        return False
     if op == 'BYE':
         write_message(wfile, 'OK', b'')
         return False
@@ -776,6 +785,7 @@ def dispatch(dev, wfile, op, kv, body, info) -> bool:
 import select  # noqa: E402  (kept next to its only user)
 
 ARGS = None
+SHUTDOWN_REQUESTED = False      # set by the SHUTDOWN op
 
 
 def raw_pipe(dev, sock) -> None:
@@ -945,6 +955,8 @@ def serve_tcp(dev) -> None:
                 conn.close()
             except Exception:
                 pass
+        if SHUTDOWN_REQUESTED:
+            break
 
 
 def serve_tcp_raw(dev) -> None:

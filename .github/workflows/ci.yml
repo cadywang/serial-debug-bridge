@@ -116,6 +116,23 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/selftest.ps1 -Port 17802 -Codec hex
 
+      - name: stop-agent.ps1 releases a stray agent
+        shell: powershell
+        run: |
+          $a = Start-Process powershell.exe -WindowStyle Hidden -PassThru `
+                -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','agent/serial_agent.ps1','-Mock','-Port','COM3','-TcpPort','17831')
+          try {
+            Start-Sleep -Seconds 3
+            powershell -NoProfile -ExecutionPolicy Bypass -File agent/stop-agent.ps1 -TcpPort 17831
+            if ($LASTEXITCODE -ne 0) { throw 'stop-agent.ps1 reported a failure' }
+            $gone = $false
+            for ($i = 0; $i -lt 40; $i++) { if ($a.HasExited) { $gone = $true; break }; Start-Sleep -Milliseconds 250 }
+            if (-not $gone) { throw 'serial_agent.ps1 is still running after stop-agent.ps1' }
+            Write-Host 'stop-agent.ps1 stopped the agent'
+          } finally {
+            Stop-Process -Id $a.Id -Force -ErrorAction SilentlyContinue
+          }
+
   test-python:
     name: Python agent + CLI (mock)
     needs: hygiene
@@ -136,6 +153,22 @@ jobs:
 
       - name: e2e (hex codec)
         run: python tests/test_e2e.py --port 17811 --agent-args "--codec hex"
+
+      - name: stop-agent.sh releases a stray agent
+        # Git for Windows has no pgrep, so this one runs on Linux only.
+        if: runner.os == 'Linux'
+        run: |
+          python agent/serial_agent.py --mock --port /dev/ttyS9 --tcp-port 17840 &
+          AGENT_PID=$!
+          sleep 2
+          if [ ! -d "/proc/$AGENT_PID" ]; then echo "::error::the agent did not start"; exit 1; fi
+          bash agent/stop-agent.sh --tcp-port 17840
+          sleep 1
+          state="$(ps -o stat= -p "$AGENT_PID" || true)"
+          case "$state" in
+            Z*|'') echo "stop-agent.sh stopped pid $AGENT_PID (state=${state:-gone})" ;;
+            *) echo "::error::pid $AGENT_PID is still running (state=$state)"; exit 1 ;;
+          esac
 
   crosscheck:
     name: Cross implementation check
@@ -160,6 +193,23 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'devctl.py could not talk to serial_agent.ps1' }
             python cli/devctl.py --tcp 127.0.0.1:17820 exec "uname -a"
             if ($LASTEXITCODE -ne 0) { throw 'cross exec failed' }
+          } finally {
+            Stop-Process -Id $a.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: devctl.py stops serial_agent.ps1 (SHUTDOWN)
+        shell: powershell
+        run: |
+          $a = Start-Process powershell.exe -WindowStyle Hidden -PassThru `
+                -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','agent/serial_agent.ps1','-Mock','-TcpPort','17821')
+          try {
+            Start-Sleep -Seconds 3
+            python cli/devctl.py --tcp 127.0.0.1:17821 shutdown
+            if ($LASTEXITCODE -ne 0) { throw 'devctl.py shutdown failed' }
+            $gone = $false
+            for ($i = 0; $i -lt 40; $i++) { if ($a.HasExited) { $gone = $true; break }; Start-Sleep -Milliseconds 250 }
+            if (-not $gone) { throw 'serial_agent.ps1 survived SHUTDOWN' }
+            Write-Host 'SHUTDOWN over the bridge stopped the agent'
           } finally {
             Stop-Process -Id $a.Id -Force -ErrorAction SilentlyContinue
           }

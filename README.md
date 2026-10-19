@@ -82,6 +82,8 @@ serial-debug-bridge/
 │   ├── requirements.txt       ← 仅真实串口需要 pyserial
 │   ├── start-agent.bat        ← Windows 启动脚本
 │   ├── start-agent.sh         ← Linux 启动脚本
+│   ├── stop-agent.ps1 / .bat  ← Windows 停止脚本（释放串口）
+│   ├── stop-agent.sh          ← Linux/macOS 停止脚本
 │   └── serial-agent.service   ← systemd 单元示例（Linux 开机自启）
 ├── cli/                       ← 跑在 server
 │   ├── devctl.py              ← 主用 CLI（跨平台，Python 3）
@@ -150,6 +152,19 @@ python3 cli/devctl.py --tcp 172.21.5.10:7801 pull /etc/config.txt ./config.txt
 
 # 交互式控制台（相当于把串口“搬”到 server 终端）
 python3 cli/devctl.py --tcp 172.21.5.10:7801 shell
+```
+
+**③ 用完停掉 agent**（串口是独占的：agent 活着，别的程序就打不开这个口）：
+
+```powershell
+# 在 client 上：结束本机的 agent 并释放串口（-List 只列不杀，-Port 只停指定的口）
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\tools\stop-agent.ps1 -Port COM3
+```
+
+也可以从 server 侧让 agent 自己退出（TCP 与 SSH 都支持）：
+
+```bash
+python3 cli/devctl.py --tcp 172.21.5.10:7801 shutdown
 ```
 
 ### 场景二：client 是 Linux（Python 代理）
@@ -283,6 +298,7 @@ python3 cli/devctl.py --tcp 127.0.0.1:7801 exec "uname -a"
 | `pull <远端> <本地>` | 下载文件（device→server），带 md5 校验 | 0=成功且校验通过 |
 | `md5 <远端>` | 打印设备上某文件的 md5 | 0/1 |
 | `reset` | 通过 DTR 复位开发板 | 0/1 |
+| `shutdown` | 让 agent 退出并释放串口（TCP / SSH 均可） | 0/1 |
 | `info` | 打印代理/设备/版本信息 | 0/1 |
 | `shell` | 进入交互式串口控制台（**仅 TCP**；Ctrl+`]` 退出） | 0 |
 
@@ -362,6 +378,21 @@ python3 cli/devctl.py --tcp 172.21.5.10:7801 pull /tmp/log.tgz ./log.tgz
 > `tar cz` 压缩后再传，或降低波特率以提高可靠性。
 ## 10. 常驻 / 开机自启
 
+### 停止 agent（释放串口）
+
+串口**独占**：agent 活着就一直占着它，别的程序（串口终端、IDE 的串口监视器、新起的
+agent）都会打不开。按情况选一种停法：
+
+| 情况 | 怎么停 |
+| --- | --- |
+| 还能连上 agent（TCP / SSH） | `devctl ... shutdown`（agent 自己退出并回 `pid`） |
+| 连不上，人在 client 上（Windows） | `powershell -File agent\stop-agent.ps1 -Port COM3`（`-List` 只列不杀） |
+| 连不上，人在 client 上（Linux） | `./agent/stop-agent.sh --port /dev/ttyUSB0`（`--list` 只列不杀） |
+| 装了 systemd 单元 | `sudo systemctl stop serial-agent` |
+
+> `shutdown` 与 stop-agent 脚本都只结束 **agent 进程**（串口随之释放），设备本身不受影响。
+> `-Raw` 透传模式没有协议通道，只能用本地脚本停。
+
 ### client = Linux（systemd）
 
 ```bash
@@ -440,6 +471,16 @@ journalctl -u serial-agent -f
 **Q8. Windows 的 `-Port COM10` 报错？**
 * 用 `-Port '\\.\COM10'`。
 
+**Q9. 串口打不开（“访问被拒绝” / busy）？**
+* 先看是不是本项目的 agent 还活着——串口是独占的，agent 活着别的程序就打不开：
+  * 还能连上 → `devctl ... shutdown`（agent 自己退出并释放串口）；
+  * 连不上（进程成了孤儿） → 在 client 上跑 `agent\stop-agent.ps1 -Port COM3`（Windows）
+    或 `agent/stop-agent.sh --port /dev/ttyUSB0`（Linux），先加 `-List` / `--list` 看看会停谁。
+  细节见 §10「停止 agent（释放串口）」。
+* 不是 agent 的话，串口终端（PuTTY / MobaXterm / IDE 的串口监视器）也会一直占着它，先关掉它们。
+* Windows 上想确认到底是谁持有句柄，可用 Sysinternals 的 `handle64.exe -a <设备名>`
+  （FTDI 转串口上设备名是 `VCP0`）。
+
 ---
 
 ## 13. 自测（不需要真实硬件）
@@ -468,7 +509,8 @@ python3 tests/test_e2e.py --target 127.0.0.1:7801
 ## 14. 假设与限制
 
 * **前提**：设备串口控制台**已经停在 shell 提示符**（多数开发板自动进 shell；需要登录的设备请先登录）。
-* **串口独占**：一个串口同一时刻只服务一个 agent 实例；agent 内部一次处理一个会话。
+* **串口独占**：一个串口同一时刻只服务一个 agent 实例（要换 agent 或改用 `-Raw`，先按 §10 停掉旧的）；
+  agent 内部一次处理一个会话。
 * **交互 shell 仅 TCP**（见 Q7）。
 * **设备侧依赖** `sh` + `base64` + `md5sum`（busybox/coreutils 标准件）。`reset` 依赖串口的 DTR 线（若设备未接 DTR-to-RESET，则无效）。
 * **编码**：命令正文按 UTF-8 发送；输出按 UTF-8 解码（无法解码的字节以替换符显示），md5 校验基于**原始字节**，不受编码影响。
