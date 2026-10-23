@@ -443,8 +443,9 @@ journalctl -u serial-agent -f
   （agent 会一直持有串口，所以一旦进入 shell，后续 `exec` 都有效。）
 * 设备**重启后会停在 `login:`**：直接以 **root** 登录（这些开发板 root 通常无密码），
   **不要反复用 `exec` 试** —— 它会把命令当用户名、探针行当密码，每次白等一个 30 秒超时。
-  登录方式（`devctl ... shell` 手动登录，或 raw 透传模式发 `root`）见 skill 的
-  `references/troubleshooting.md` 第 10 节。
+  登录方式（`devctl ... shell` 手动登录，或 raw 透传模式发 `root`）见
+  [skills 仓库的 `troubleshooting.md`](https://github.com/cadywang/skills/blob/main/skills/serial-debug-bridge/references/troubleshooting.md)
+  第 10 节。
 * 波特率/串口名不对：核对 `-Port` `-Baud` / `--port` `--baud`，确认设备实际参数。
 * 换行/回车不对：极少数设备只认 `\r`，可在设备侧 `stty` 调整，或先 `shell` 手动敲一次。
 
@@ -562,10 +563,12 @@ squash 合并，它就会变成 `main` 上的提交标题）与 **模板里「�
 * 安全问题**不要**开公开 Issue，见 [`SECURITY.md`](SECURITY.md)。
 * 提问前先看 [`SUPPORT.md`](SUPPORT.md)，Issue/PR 模板在 `.github/`。
 * 依赖更新由 `.github/dependabot.yml` 发起 PR（同样要过 CI 五个 job；bot 生成的提交按 `--skip-bots` 豁免 commit 风格检查，见 [`REVIEW_POLICY.md`](REVIEW_POLICY.md)）。
-* 面向 server 的 Codex skill 在 `skill/serial-debug-bridge/`，安装到 server 的
-  `~/.codex/skills/` 后即可让 server 侧的 Codex 直接调用（`scripts/sdb` 为统一入口，
-  `scripts/sdb-check.sh` 做链路与设备身份自检）：
-  `scp -r skill/serial-debug-bridge <server>:~/.codex/skills/`
+* 面向 server 的 Codex skill 已迁到 [cadywang/skills](https://github.com/cadywang/skills) 的
+  `skills/serial-debug-bridge/`（本仓库不再保留副本）；装到 server 的 `~/.codex/skills/`
+  后即可让 server 侧的 Codex 直接调用（`scripts/sdb` 为统一入口，`scripts/sdb-check.sh`
+  做链路与设备身份自检）：在 skills 仓库里执行
+  `scp -r skills/serial-debug-bridge <server>:~/.codex/skills/`。
+  `scripts/sdb` 仍使用本仓库的 `cli/devctl.py`（安装方式见 skills 仓库 README）。
 * 重新施加/校验保护规则：
   `pwsh -File tools/create-github-repo.ps1 -Owner <you>`（幂等，支持 `-DryRun`）。
 

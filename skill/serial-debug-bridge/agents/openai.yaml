@@ -1,7 +1,0 @@
-interface:
-  display_name: "Serial Debug Bridge"
-  short_description: "从 server 通过远端串口操作嵌入式设备"
-  brand_color: "#0B7285"
-  default_prompt: "Use $serial-debug-bridge to check the link and run the command I need on the embedded device."
-policy:
-  allow_implicit_invocation: true
