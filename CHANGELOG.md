@@ -24,6 +24,12 @@
   也要过这道门禁，所以清单没法在合并时被悄悄放宽。工具 `tools/check-pr.py`，
   自测 `tests/test_check_pr.py`（18 例）；机器人 PR（dependabot）跳过。
 
+### 变更
+- Codex skill 迁移到独立仓库 [cadywang/skills](https://github.com/cadywang/skills) 的
+  `skills/serial-debug-bridge/`：本仓库不再保留 `skill/` 副本，避免 skill 与
+  `devctl`/`agent` 在同一仓库里重复维护（两份实现容易各改各的）。README / CONTRIBUTING /
+  REVIEW_POLICY 里的引用已改指向新仓库；`scripts/sdb` 仍使用本仓库的 `cli/devctl.py`。
+
 ### 修复
 - CI 的提交规范门禁误拒 GitHub 网页端 squash 合并产生的提交：作者被改写成
   `<ID>+<login>@users.noreply.github.com`、自动追加 `Co-authored-by:`，正文还可能夹在

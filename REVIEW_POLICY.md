@@ -36,7 +36,7 @@ git push -u origin agent/hex-retry
 | `cli/devctl.ps1` | `cli/devctl.py` |
 | 协议行为（帧格式、编码、超时语义） | `PROTOCOL.md` + 两套实现 + 两套 mock（`tests/*`） |
 | 面向用户的行为 | `README.md`、`CHANGELOG.md` |
-| skill 用到的入口/参数（`scripts/sdb`、环境变量） | `skill/serial-debug-bridge/SKILL.md` 与 `references/` |
+| skill 用到的入口/参数（`scripts/sdb`、环境变量） | [cadywang/skills](https://github.com/cadywang/skills) 的 `skills/serial-debug-bridge/SKILL.md` 与 `references/`（不在本仓库；跨仓库改动两边分别提 PR） |
 
 CI 的 `Cross implementation check` 只能验证「ps 的 CLI 连 py 的 agent」这类组合，
 **覆盖不了语义是否一致**——所以人工审查时要专门盯这一项。
