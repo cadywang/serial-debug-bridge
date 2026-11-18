@@ -937,6 +937,22 @@ function Mock-Exec {
   Mock-Emit ('sh: ' + $first + ': not found' + "`r`n")
   $script:MockLastRc = 127
 }
+# A NetworkStream read timeout is an idle connection, not a dead one.
+# Any other read error means the peer is gone and this session must end.
+function Test-ReadTimeout {
+  param([System.Exception]$Exception)
+  $e = $Exception
+  while ($null -ne $e) {
+    if ($e -is [System.TimeoutException]) { return $true }
+    if ($e -is [System.Net.Sockets.SocketException]) {
+      $code = $e.SocketErrorCode
+      return ($code -eq [System.Net.Sockets.SocketError]::TimedOut -or
+              $code -eq [System.Net.Sockets.SocketError]::WouldBlock)
+    }
+    $e = $e.InnerException
+  }
+  return $false
+}
 # ---------------------------------------------------------------------
 # Raw passthrough used by the interactive SHELL op (TCP only): bytes from
 # the client go straight to the UART and vice versa, with no framing.
@@ -946,23 +962,42 @@ function Raw-Pipe {
   Write-Log 'Entering interactive raw shell passthrough.'
   $buf = New-Object byte[] 65536
   try { $In.ReadTimeout = 200 } catch { }
-  while ($true) {
-    $idle = $true
-    if ((Device-BytesToRead) -gt 0) {
-      $b = Device-Read 65536
-      if ($b.Length -gt 0) { $Out.Write($b, 0, $b.Length); $Out.Flush(); $idle = $false }
+  try {
+    while ($true) {
+      $idle = $true
+      if ((Device-BytesToRead) -gt 0) {
+        $b = Device-Read 65536
+        if ($b.Length -gt 0) {
+          try {
+            $Out.Write($b, 0, $b.Length)
+            $Out.Flush()
+          } catch {
+            Write-Log 'Client disconnected while forwarding serial data.'
+            break
+          }
+          $idle = $false
+        }
+      }
+      $data = $null
+      try {
+        $n = $In.Read($buf, 0, $buf.Length)
+        if ($n -le 0) { break }
+        $data = New-Object byte[] $n
+        [Array]::Copy($buf, $data, $n)
+      } catch {
+        if (Test-ReadTimeout $_.Exception) {
+          $data = $null
+        } else {
+          Write-Log ('Client disconnected while reading input: ' + $_.Exception.Message)
+          break
+        }
+      }
+      if ($null -ne $data) { Device-Write $data; Write-Log ('rawpipe after write dev=' + (Device-BytesToRead)); $idle = $false }
+      if ($idle) { Start-Sleep -Milliseconds 5 }
     }
-    $data = $null
-    try {
-      $n = $In.Read($buf, 0, $buf.Length)
-      if ($n -le 0) { break }
-      $data = New-Object byte[] $n
-      [Array]::Copy($buf, $data, $n)
-    } catch [System.TimeoutException] { $data = $null } catch [System.IO.IOException] { $data = $null }
-    if ($null -ne $data) { Device-Write $data; Write-Log ('rawpipe after write dev=' + (Device-BytesToRead)); $idle = $false }
-    if ($idle) { Start-Sleep -Milliseconds 5 }
+  } finally {
+    Write-Log 'Interactive raw shell passthrough finished.'
   }
-  Write-Log 'Interactive raw shell passthrough finished.'
 }
 function Show-Banner {
   $extra = ''

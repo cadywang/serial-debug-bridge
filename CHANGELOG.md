@@ -31,6 +31,10 @@
   REVIEW_POLICY 里的引用已改指向新仓库；`scripts/sdb` 仍使用本仓库的 `cli/devctl.py`。
 
 ### 修复
+- `-Raw` 模式在客户端断开后不再退出或卡死：之前向已断开的 socket 回写串口数据会抛异常并终止
+  agent，而读取端又把真正的断连当成超时反复重试，导致唯一的 accept 槽被死连接占住，后续连接
+  一直无响应。现在只有 socket 超时视为空闲，其他读写错误结束当前连接，agent 继续接受下一个
+  客户端；新增 `tests/test_raw_disconnect.ps1` 并由 Windows CI 执行。
 - CI 的提交规范门禁误拒 GitHub 网页端 squash 合并产生的提交：作者被改写成
   `<ID>+<login>@users.noreply.github.com`、自动追加 `Co-authored-by:`，正文还可能夹在
   trailer 块之间（`main` 上 #4 / #5 合并后的构建就是这么红的）。现在 GitHub noreply
