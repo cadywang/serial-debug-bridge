@@ -104,8 +104,8 @@ try {
   & git rev-parse HEAD *> $null
   if ($LASTEXITCODE -ne 0) { throw 'no commit yet; run: git add -A && git commit' }
 
-  $settings = Get-Content -Raw "$root\governance\repository-settings.json" | ConvertFrom-Json
-  $protection = Get-Content -Raw "$root\governance\branch-protection.json" | ConvertFrom-Json
+  $settings = Get-Content -Raw -Encoding UTF8 "$root\governance\repository-settings.json" | ConvertFrom-Json
+  $protection = Get-Content -Raw -Encoding UTF8 "$root\governance\branch-protection.json" | ConvertFrom-Json
 
   # GitHub refuses the squash/merge title fields while that strategy is off
   # ("no_squash_merge_strategy"), so only send the ones the enabled strategies
